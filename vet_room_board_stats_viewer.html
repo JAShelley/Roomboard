@@ -1,0 +1,2141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Vet Room Board Analytics</title>
+<style>
+  :root{
+    --bg:#07111f;
+    --bg-2:#0b1628;
+    --panel:#0f1b31;
+    --panel-2:#13233d;
+    --panel-3:#0b1527;
+    --line:rgba(148,163,184,.18);
+    --text:#e7edf7;
+    --muted:#8ea0bb;
+    --accent:#5eead4;
+    --accent-2:#38bdf8;
+    --accent-3:#fbbf24;
+    --danger:#fb7185;
+    --warning:#fbbf24;
+    --success:#34d399;
+    --shadow:0 24px 70px rgba(1,8,18,.45);
+    --radius:20px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    min-height:100vh;
+    font-family:"Avenir Next","Segoe UI",sans-serif;
+    color:var(--text);
+    background:
+      radial-gradient(circle at top left, rgba(56,189,248,.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(94,234,212,.10), transparent 22%),
+      linear-gradient(180deg, #08101c 0%, var(--bg) 42%, #040914 100%);
+  }
+  a{color:inherit}
+  .shell{
+    max-width:1380px;
+    margin:0 auto;
+    padding:28px 18px 48px;
+  }
+  .hero{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:18px;
+    margin-bottom:18px;
+  }
+  h1{
+    margin:0;
+    font-size:clamp(2.1rem, 5vw, 3.8rem);
+    line-height:.95;
+    letter-spacing:-.04em;
+  }
+  .sub{
+    margin:10px 0 0;
+    max-width:760px;
+    color:var(--muted);
+    font-size:1rem;
+  }
+  .status{
+    margin-top:14px;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 14px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:rgba(15,27,49,.72);
+    color:var(--muted);
+  }
+  .status::before{
+    content:"";
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:var(--accent);
+    box-shadow:0 0 18px rgba(94,234,212,.8);
+  }
+  .linkBtn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:12px 18px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:rgba(19,35,61,.72);
+    text-decoration:none;
+    color:var(--text);
+    white-space:nowrap;
+  }
+  .panel{
+    background:linear-gradient(180deg, rgba(19,35,61,.92), rgba(11,21,39,.92));
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    backdrop-filter:blur(14px);
+  }
+  .card{ padding:20px; }
+  .stack{ display:grid; gap:18px; }
+  .eyebrow{
+    margin:0 0 8px;
+    color:var(--accent);
+    text-transform:uppercase;
+    letter-spacing:.12em;
+    font-size:.75rem;
+    font-weight:800;
+  }
+  .sectionTitle{
+    margin:0 0 6px;
+    font-size:1.15rem;
+  }
+  .sectionSubtitle{
+    margin:0;
+    color:var(--muted);
+    font-size:.95rem;
+  }
+  .muted{ color:var(--muted); }
+  .loginGrid,
+  .controls{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+    gap:14px;
+    align-items:end;
+  }
+  .field{
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+  }
+  .fieldWide{
+    grid-column:1/-1;
+  }
+  label{
+    font-size:.8rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    font-weight:700;
+  }
+  input, select{
+    width:100%;
+    padding:12px 14px;
+    border-radius:14px;
+    border:1px solid rgba(148,163,184,.16);
+    background:rgba(6,13,26,.72);
+    color:var(--text);
+    font:inherit;
+    outline:none;
+  }
+  input::placeholder{ color:rgba(142,160,187,.8); }
+  input:focus, select:focus{
+    border-color:rgba(94,234,212,.45);
+    box-shadow:0 0 0 4px rgba(94,234,212,.10);
+  }
+  .actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  button{
+    border:0;
+    border-radius:999px;
+    padding:12px 18px;
+    font:inherit;
+    cursor:pointer;
+    transition:transform .12s ease, opacity .12s ease, background .12s ease;
+  }
+  button:hover{ transform:translateY(-1px); }
+  button:disabled{
+    cursor:not-allowed;
+    opacity:.6;
+    transform:none;
+  }
+  .primary{
+    background:linear-gradient(135deg, var(--accent), var(--accent-2));
+    color:#04111f;
+    font-weight:800;
+  }
+  .secondary{
+    background:rgba(94,234,212,.10);
+    color:var(--accent);
+    border:1px solid rgba(94,234,212,.18);
+  }
+  .ghost{
+    background:rgba(255,255,255,.03);
+    color:var(--text);
+    border:1px solid var(--line);
+  }
+  .danger{
+    background:rgba(251,113,133,.12);
+    color:#ffb5c1;
+    border:1px solid rgba(251,113,133,.22);
+  }
+  .pillRow{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .pillBtn{
+    padding:10px 14px;
+    border-radius:999px;
+    border:1px solid rgba(148,163,184,.14);
+    background:rgba(6,13,26,.54);
+    color:var(--muted);
+    font-size:.92rem;
+  }
+  .pillBtn.active{
+    color:#04111f;
+    background:linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-color:transparent;
+    font-weight:800;
+  }
+  .statsGrid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+    gap:16px;
+  }
+  .metricCard{
+    padding:15px;
+    border-radius:16px;
+    border:1px solid rgba(148,163,184,.14);
+    background:rgba(6,13,26,.52);
+    min-height:96px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:6px;
+  }
+  .metricCard strong{
+    color:var(--muted);
+    font-size:.74rem;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+  .metricCard span{
+    font-size:1.28rem;
+    font-weight:800;
+    letter-spacing:-.02em;
+    color:var(--text);
+  }
+  .metricCard em{
+    font-style:normal;
+    color:var(--muted);
+    font-size:.85rem;
+  }
+  .chartPanel{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) 320px;
+    gap:18px;
+    align-items:start;
+  }
+  .chartWrap{
+    position:relative;
+    border:1px solid rgba(148,163,184,.14);
+    border-radius:18px;
+    background:rgba(6,13,26,.42);
+    padding:16px;
+  }
+  .chartLegend{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    margin-top:10px;
+    color:var(--muted);
+    font-size:.9rem;
+  }
+  .legendKey{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+  }
+  .legendSwatch{
+    width:10px;
+    height:10px;
+    border-radius:999px;
+  }
+  .chartTooltip{
+    position:absolute;
+    pointer-events:none;
+    min-width:160px;
+    max-width:240px;
+    padding:10px 12px;
+    border-radius:12px;
+    border:1px solid rgba(148,163,184,.18);
+    background:rgba(7,17,31,.96);
+    color:var(--text);
+    box-shadow:0 18px 40px rgba(1,8,18,.4);
+    font-size:.88rem;
+    line-height:1.35;
+    opacity:0;
+    transform:translateY(4px);
+    transition:opacity .12s ease, transform .12s ease;
+    z-index:5;
+  }
+  .chartTooltip.show{
+    opacity:1;
+    transform:translateY(0);
+  }
+  .highlights{
+    display:grid;
+    gap:10px;
+  }
+  .highlightItem{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid rgba(148,163,184,.14);
+    background:rgba(6,13,26,.42);
+  }
+  .highlightItem strong{
+    display:block;
+    color:var(--muted);
+    font-size:.74rem;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    margin-bottom:6px;
+  }
+  .highlightItem span{
+    display:block;
+    font-size:1rem;
+    font-weight:700;
+  }
+  .split{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+    gap:18px;
+  }
+  .inset{
+    padding:16px;
+    border-radius:18px;
+    border:1px solid rgba(148,163,184,.14);
+    background:rgba(6,13,26,.42);
+  }
+  .tableWrap{
+    overflow:auto;
+    border:1px solid rgba(148,163,184,.14);
+    border-radius:16px;
+    background:rgba(6,13,26,.36);
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+  }
+  th, td{
+    padding:13px 10px;
+    border-bottom:1px solid var(--line);
+    text-align:left;
+    vertical-align:top;
+  }
+  th{
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    font-size:.78rem;
+    font-weight:700;
+  }
+  td.numeric, th.numeric{
+    text-align:right;
+    white-space:nowrap;
+  }
+  tr:last-child td{ border-bottom:0; }
+  .toolbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:end;
+    gap:12px;
+    margin-bottom:14px;
+    flex-wrap:wrap;
+  }
+  .summaryStrip{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-top:12px;
+  }
+  .summaryPill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 12px;
+    border-radius:999px;
+    border:1px solid rgba(148,163,184,.14);
+    background:rgba(6,13,26,.42);
+    color:var(--muted);
+    font-size:.9rem;
+  }
+  .summaryPill strong{
+    color:var(--text);
+    font-size:.92rem;
+  }
+  .logList{
+    display:grid;
+    gap:12px;
+  }
+  .logItem{
+    display:flex;
+    justify-content:space-between;
+    gap:14px;
+    align-items:center;
+    padding:14px 16px;
+    border-radius:16px;
+    border:1px solid var(--line);
+    background:rgba(6,13,26,.52);
+  }
+  .logItem.selected{
+    border-color:rgba(94,234,212,.35);
+    box-shadow:0 0 0 1px rgba(94,234,212,.18) inset;
+  }
+  .logSelect{
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    min-width:0;
+    flex:1 1 auto;
+  }
+  .logCheck{
+    width:18px;
+    height:18px;
+    accent-color:#5eead4;
+    flex:0 0 auto;
+    margin-top:4px;
+  }
+  .logMain{
+    min-width:0;
+    display:grid;
+    gap:6px;
+  }
+  .logTitle{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+  }
+  .logName{
+    font-weight:800;
+    letter-spacing:-.01em;
+  }
+  .logBadge{
+    display:inline-flex;
+    align-items:center;
+    padding:5px 10px;
+    border-radius:999px;
+    background:rgba(56,189,248,.12);
+    color:#9ddcff;
+    border:1px solid rgba(56,189,248,.18);
+    font-size:.83rem;
+  }
+  .logBadge.success{
+    color:#b9ffe9;
+    background:rgba(52,211,153,.12);
+    border-color:rgba(52,211,153,.18);
+  }
+  .logBadge.warn{
+    color:#ffd98a;
+    background:rgba(251,191,36,.10);
+    border-color:rgba(251,191,36,.16);
+  }
+  .logBadge.danger{
+    color:#ffb5c1;
+    background:rgba(251,113,133,.10);
+    border-color:rgba(251,113,133,.16);
+  }
+  .logMeta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 14px;
+    color:var(--muted);
+    font-size:.92rem;
+  }
+  .logActions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .miniStatus{
+    color:var(--muted);
+    font-size:.92rem;
+  }
+  .emptyState{
+    padding:20px;
+    border-radius:16px;
+    border:1px dashed rgba(148,163,184,.18);
+    color:var(--muted);
+    background:rgba(6,13,26,.28);
+  }
+  @media (max-width: 1080px){
+    .chartPanel{ grid-template-columns:1fr; }
+  }
+  @media (max-width: 900px){
+    .hero{flex-direction:column}
+    .split{grid-template-columns:1fr}
+  }
+  @media (max-width: 720px){
+    .actions, .toolbar{align-items:stretch}
+    button, .linkBtn{width:100%}
+    .logItem{flex-direction:column; align-items:flex-start}
+    .logActions{width:100%}
+    .logActions button{width:100%}
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <section class="hero">
+    <div>
+      <h1>Board Analytics</h1>
+      <p class="sub">The room board can stay focused on live flow while this dashboard handles deeper reporting, faster review, and safer cleanup of historical sessions.</p>
+      <div class="status" id="statusLine">Loading…</div>
+    </div>
+    <a class="linkBtn" href="./RoomBoard_minimal_practice_board_state_only.html">Open main board</a>
+  </section>
+
+  <div class="stack">
+    <section class="panel card">
+      <p class="eyebrow">Access</p>
+      <h2 class="sectionTitle">Supabase login</h2>
+      <p class="muted">Use the same account as the room board to load shared stats and manage past session logs.</p>
+      <div class="loginGrid" style="margin-top:14px;">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="text" autocomplete="username" placeholder="name@clinic.com"/>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="text" autocomplete="current-password" placeholder="password"/>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <button class="primary" id="loginBtn" type="button">Login</button>
+        <button class="secondary" id="signupBtn" type="button">Sign up</button>
+        <button class="ghost" id="logoutBtn" type="button" style="display:none;">Logout</button>
+      </div>
+    </section>
+
+    <section class="panel card">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">Stats</p>
+          <h2 class="sectionTitle">Session summary</h2>
+          <p class="sectionSubtitle">Filter once, then review workload, duration patterns, breakdown tables, and exports from the same range.</p>
+        </div>
+        <div class="actions">
+          <button class="primary" id="refreshStatsBtn" type="button">Refresh stats</button>
+          <button class="secondary" id="exportStatsCsvBtn" type="button">Export CSV</button>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="field fieldWide">
+          <label>Quick range</label>
+          <div class="pillRow" id="statsQuickRanges">
+            <button class="pillBtn" type="button" data-range="today">Today</button>
+            <button class="pillBtn" type="button" data-range="7d">Last 7 days</button>
+            <button class="pillBtn" type="button" data-range="30d">Last 30 days</button>
+            <button class="pillBtn" type="button" data-range="90d">Last 90 days</button>
+            <button class="pillBtn" type="button" data-range="mtd">Month to date</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="statsStart">Start date</label>
+          <input id="statsStart" type="date"/>
+        </div>
+        <div class="field">
+          <label for="statsEnd">End date</label>
+          <input id="statsEnd" type="date"/>
+        </div>
+        <div class="field">
+          <label for="statsGroupBy">Group by</label>
+          <select id="statsGroupBy">
+            <option value="day">Day</option>
+            <option value="week">Week</option>
+            <option value="month">Month</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="statsDoctorFilter">Doctor</label>
+          <select id="statsDoctorFilter">
+            <option value="">All doctors</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="statsGraphMode">Graph dataset</label>
+          <select id="statsGraphMode">
+            <option value="appointments">Appointments</option>
+            <option value="cleaning">Cleaning</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="statsTrendMetric">Trend metric</label>
+          <select id="statsTrendMetric">
+            <option value="avg_duration">Average duration</option>
+            <option value="median_duration">Median duration</option>
+            <option value="count">Session count</option>
+            <option value="total_hours">Total hours</option>
+          </select>
+        </div>
+      </div>
+      <div class="statsGrid" style="margin-top:18px;">
+        <article class="metricCard">
+          <strong>Visits</strong>
+          <span id="visitCount">0</span>
+          <em>Appointments in selected range</em>
+        </article>
+        <article class="metricCard">
+          <strong>Avg room time</strong>
+          <span id="avgRoomTime">00:00:00</span>
+          <em>Mean closed appointment duration</em>
+        </article>
+        <article class="metricCard">
+          <strong>Median room time</strong>
+          <span id="medianRoomTime">00:00:00</span>
+          <em>Typical appointment duration</em>
+        </article>
+        <article class="metricCard">
+          <strong>P90 room time</strong>
+          <span id="p90RoomTime">00:00:00</span>
+          <em>Upper-end appointment duration</em>
+        </article>
+        <article class="metricCard">
+          <strong>Cleanings</strong>
+          <span id="cleanCount">0</span>
+          <em>Closed cleaning sessions</em>
+        </article>
+        <article class="metricCard">
+          <strong>Avg clean time</strong>
+          <span id="avgCleanTime">00:00:00</span>
+          <em>Average turnaround duration</em>
+        </article>
+        <article class="metricCard">
+          <strong>Room hours</strong>
+          <span id="roomHoursTotal">0.0</span>
+          <em>Total appointment hours</em>
+        </article>
+        <article class="metricCard">
+          <strong>Rooms used</strong>
+          <span id="uniqueRoomsCount">0</span>
+          <em>Distinct rooms in selected visits</em>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel card">
+      <p class="eyebrow">Trend</p>
+      <h2 class="sectionTitle" id="trendTitle">Appointment trend by selected period</h2>
+      <div class="chartPanel" style="margin-top:14px;">
+        <div class="chartWrap">
+          <div id="trendChart" class="muted">Refresh stats to load chart.</div>
+          <div id="trendTooltip" class="chartTooltip"></div>
+          <div class="chartLegend" id="trendLegend">
+            <span class="legendKey"><span class="legendSwatch" style="background:var(--accent-2);"></span>Appointments</span>
+          </div>
+        </div>
+        <div class="highlights" id="statsHighlights">
+          <div class="highlightItem"><strong>Highlights</strong><span>Refresh stats to load summary.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel card">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">Breakdowns</p>
+          <h2 class="sectionTitle">Doctor and room performance</h2>
+          <p class="sectionSubtitle" id="analysisStatus">Refresh stats to load detailed operational tables.</p>
+        </div>
+      </div>
+      <div class="split">
+        <div class="inset">
+          <h3 class="sectionTitle" style="margin-bottom:12px;">Doctor view</h3>
+          <div class="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Doctor</th>
+                  <th class="numeric">Visits</th>
+                  <th class="numeric">Avg</th>
+                  <th class="numeric">Median</th>
+                  <th class="numeric">Hours</th>
+                  <th class="numeric">Share</th>
+                </tr>
+              </thead>
+              <tbody id="doctorBreakdownBody">
+                <tr><td colspan="6" class="muted">Refresh stats to load doctor breakdown.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="inset">
+          <h3 class="sectionTitle" style="margin-bottom:12px;">Room view</h3>
+          <div class="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Room</th>
+                  <th class="numeric">Visits</th>
+                  <th class="numeric">Avg</th>
+                  <th class="numeric">Cleanings</th>
+                  <th class="numeric">Hours</th>
+                  <th class="numeric">Last used</th>
+                </tr>
+              </thead>
+              <tbody id="roomBreakdownBody">
+                <tr><td colspan="6" class="muted">Refresh stats to load room breakdown.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel card">
+      <p class="eyebrow">Logs</p>
+      <h2 class="sectionTitle">Session log tools</h2>
+      <p class="muted">Filter room or cleaning sessions, search by room or doctor, spot outliers faster, export what you are reviewing, and remove incorrect entries.</p>
+      <div class="controls" style="margin-top:14px;">
+        <div class="field">
+          <label for="roomLogsType">Log type</label>
+          <select id="roomLogsType">
+            <option value="room">Room sessions</option>
+            <option value="cleaning">Cleaning sessions</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="roomLogsStart">Start date</label>
+          <input id="roomLogsStart" type="date"/>
+        </div>
+        <div class="field">
+          <label for="roomLogsEnd">End date</label>
+          <input id="roomLogsEnd" type="date"/>
+        </div>
+        <div class="field">
+          <label for="roomLogsLimit">Max rows</label>
+          <input id="roomLogsLimit" type="number" min="25" max="500" step="25"/>
+        </div>
+        <div class="field">
+          <label for="roomLogsSearch">Search</label>
+          <input id="roomLogsSearch" type="search" placeholder="Room, doctor, or date"/>
+        </div>
+        <div class="field">
+          <label for="roomLogsSort">Sort by</label>
+          <select id="roomLogsSort">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="longest">Longest duration</option>
+            <option value="shortest">Shortest duration</option>
+            <option value="room_az">Room A-Z</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="roomLogsOutliers">Show</label>
+          <select id="roomLogsOutliers">
+            <option value="all">All sessions</option>
+            <option value="outliers">All outliers</option>
+            <option value="short">Short outliers</option>
+            <option value="long">Long outliers</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <button class="ghost" id="selectAllLogsBtn" type="button">Select all shown</button>
+        <button class="danger" id="deleteSelectedLogsBtn" type="button">Delete selected</button>
+        <button class="secondary" id="exportVisibleLogsBtn" type="button">Export visible logs</button>
+        <button class="primary" id="refreshRoomLogsBtn" type="button">Refresh logs</button>
+      </div>
+      <div class="summaryStrip" id="roomLogsSummary">
+        <span class="summaryPill">No logs loaded yet.</span>
+      </div>
+      <div class="miniStatus" id="roomLogsStatus" style="margin-top:12px;">No logs loaded yet.</div>
+    </section>
+
+    <section class="panel card">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">History</p>
+          <h2 class="sectionTitle">Logged sessions</h2>
+        </div>
+      </div>
+      <div class="logList" id="roomLogsList">
+        <div class="emptyState">Load logs to view room or cleaning session history.</div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+window.__SUPABASE_URL__ = window.__SUPABASE_URL__ || "https://bqqjtgbfvtscwhbhscps.supabase.co";
+window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJxcWp0Z2JmdnRzY3doYmhzY3BzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3NTIxNDEsImV4cCI6MjA5MDMyODE0MX0.hi_ruvxOBNbUIdQ-BYhjhuy6KM5oigqib-zIWL8dsts";
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  (function(){
+    function $(id){ return document.getElementById(id); }
+    function $all(selector){ return Array.prototype.slice.call(document.querySelectorAll(selector)); }
+
+    var SUPABASE_URL = window.__SUPABASE_URL__ || "";
+    var SUPABASE_ANON_KEY = window.__SUPABASE_ANON_KEY__ || "";
+    var STORAGE_KEY = "vetBoardAnalyticsPrefsV2";
+    var supabase = null;
+    var lastRows = null;
+    var rawLogRows = [];
+    var currentLogRows = [];
+    var selectedLogIds = {};
+    var statsRequestToken = 0;
+    var logsRequestToken = 0;
+
+    function setStatus(msg){
+      $("statusLine").textContent = msg || "";
+    }
+
+    function setRoomLogsStatus(msg){
+      $("roomLogsStatus").textContent = msg || "";
+    }
+
+    function getSelectedLogIds(){
+      return Object.keys(selectedLogIds).filter(function(id){ return !!selectedLogIds[id]; });
+    }
+
+    function updateLogSelectionUI(){
+      var selectedCount = getSelectedLogIds().length;
+      var deleteBtn = $("deleteSelectedLogsBtn");
+      if(deleteBtn){
+        deleteBtn.disabled = !selectedCount;
+        deleteBtn.textContent = selectedCount ? ("Delete selected (" + selectedCount + ")") : "Delete selected";
+      }
+    }
+
+    function escapeHtml(str){
+      str = String(str == null ? "" : str);
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function getErrorMessage(err){
+      if(!err) return "Unknown error";
+      if(typeof err === "string") return err;
+      var parts = [];
+      if(err.code) parts.push("code " + err.code);
+      if(err.message) parts.push(err.message);
+      if(err.details) parts.push(err.details);
+      if(err.hint) parts.push("Hint: " + err.hint);
+      return parts.length ? parts.join(" | ") : String(err);
+    }
+
+    function msToHMS(ms){
+      ms = Number(ms || 0);
+      if(!isFinite(ms) || ms < 0) ms = 0;
+      var total = Math.floor(ms / 1000);
+      var h = Math.floor(total / 3600);
+      var m = Math.floor((total % 3600) / 60);
+      var s = total % 60;
+      function pad(n){ n = String(n); return n.length < 2 ? ("0" + n) : n; }
+      return pad(h) + ":" + pad(m) + ":" + pad(s);
+    }
+
+    function median(arr){
+      if(!arr || !arr.length) return 0;
+      var copy = arr.slice().sort(function(a, b){ return a - b; });
+      var mid = Math.floor(copy.length / 2);
+      if(copy.length % 2) return copy[mid];
+      return (copy[mid - 1] + copy[mid]) / 2;
+    }
+
+    function percentile(arr, p){
+      if(!arr || !arr.length) return 0;
+      var copy = arr.slice().sort(function(a, b){ return a - b; });
+      if(copy.length === 1) return copy[0];
+      var idx = (copy.length - 1) * p;
+      var lo = Math.floor(idx);
+      var hi = Math.ceil(idx);
+      if(lo === hi) return copy[lo];
+      return copy[lo] + (copy[hi] - copy[lo]) * (idx - lo);
+    }
+
+    function csvEscape(v){
+      v = (v == null) ? "" : String(v);
+      if(/[",\n]/.test(v)) return '"' + v.replace(/"/g, '""') + '"';
+      return v;
+    }
+
+    function formatDateTime(iso){
+      if(!iso) return "—";
+      var d = new Date(iso);
+      if(isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString([], {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit"
+      });
+    }
+
+    function formatDateOnly(iso){
+      if(!iso) return "—";
+      var d = new Date(iso);
+      if(isNaN(d.getTime())) return String(iso);
+      return d.toLocaleDateString([], {
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      });
+    }
+
+    function formatCount(value){
+      value = Number(value || 0);
+      if(!isFinite(value)) value = 0;
+      var rounded = Math.round(value * 10) / 10;
+      return Math.abs(rounded - Math.round(rounded)) < 0.001 ? String(Math.round(rounded)) : rounded.toFixed(1);
+    }
+
+    function formatPercent(value){
+      value = Number(value || 0);
+      if(!isFinite(value)) value = 0;
+      return formatCount(value) + "%";
+    }
+
+    function formatHourLabel(hour){
+      hour = Number(hour || 0);
+      if(!isFinite(hour) || hour < 0) hour = 0;
+      var suffix = hour >= 12 ? "PM" : "AM";
+      var display = hour % 12;
+      if(display === 0) display = 12;
+      return display + ":00 " + suffix;
+    }
+
+    function toDateInputValue(d){
+      if(!(d instanceof Date) || isNaN(d.getTime())) return "";
+      var y = d.getFullYear();
+      var m = String(d.getMonth() + 1).padStart(2, "0");
+      var day = String(d.getDate()).padStart(2, "0");
+      return y + "-" + m + "-" + day;
+    }
+
+    function parseDateInput(value, fallback){
+      var d = value ? new Date(value + "T00:00:00") : null;
+      if(!d || isNaN(d.getTime())) return fallback ? new Date(fallback.getTime()) : new Date();
+      return d;
+    }
+
+    function readStoredPreferences(){
+      try{
+        var raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch(e){
+        return {};
+      }
+    }
+
+    function savePreferences(){
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          statsStart: $("statsStart").value || "",
+          statsEnd: $("statsEnd").value || "",
+          statsGroupBy: $("statsGroupBy").value || "day",
+          statsDoctorFilter: $("statsDoctorFilter").value || "",
+          statsGraphMode: $("statsGraphMode").value || "appointments",
+          statsTrendMetric: $("statsTrendMetric").value || "avg_duration",
+          statsPreset: $("statsQuickRanges").dataset.activePreset || "",
+          roomLogsType: $("roomLogsType").value || "room",
+          roomLogsStart: $("roomLogsStart").value || "",
+          roomLogsEnd: $("roomLogsEnd").value || "",
+          roomLogsLimit: $("roomLogsLimit").value || "100",
+          roomLogsSearch: $("roomLogsSearch").value || "",
+          roomLogsSort: $("roomLogsSort").value || "newest",
+          roomLogsOutliers: $("roomLogsOutliers").value || "all"
+        }));
+      } catch(e){}
+    }
+
+    function updateAuthUI(loggedIn){
+      $("logoutBtn").style.display = loggedIn ? "inline-flex" : "none";
+      $("loginBtn").style.display = loggedIn ? "none" : "inline-flex";
+      $("signupBtn").style.display = loggedIn ? "none" : "inline-flex";
+    }
+
+    function defaultStatsDates(){
+      var end = new Date();
+      var start = new Date(end.getTime() - 6 * 24 * 3600 * 1000);
+      $("statsStart").value = toDateInputValue(start);
+      $("statsEnd").value = toDateInputValue(end);
+    }
+
+    function defaultRoomLogDates(){
+      var end = new Date();
+      var start = new Date(end.getTime() - 29 * 24 * 3600 * 1000);
+      $("roomLogsStart").value = toDateInputValue(start);
+      $("roomLogsEnd").value = toDateInputValue(end);
+      $("roomLogsLimit").value = "100";
+    }
+
+    function restorePreferences(){
+      var prefs = readStoredPreferences();
+      if(prefs.statsStart) $("statsStart").value = prefs.statsStart;
+      if(prefs.statsEnd) $("statsEnd").value = prefs.statsEnd;
+      if(prefs.statsGroupBy) $("statsGroupBy").value = prefs.statsGroupBy;
+      if(prefs.statsGraphMode) $("statsGraphMode").value = prefs.statsGraphMode;
+      if(prefs.statsTrendMetric) $("statsTrendMetric").value = prefs.statsTrendMetric;
+      $("statsDoctorFilter").dataset.pendingValue = prefs.statsDoctorFilter || "";
+
+      if(prefs.roomLogsType) $("roomLogsType").value = prefs.roomLogsType;
+      if(prefs.roomLogsStart) $("roomLogsStart").value = prefs.roomLogsStart;
+      if(prefs.roomLogsEnd) $("roomLogsEnd").value = prefs.roomLogsEnd;
+      if(prefs.roomLogsLimit) $("roomLogsLimit").value = prefs.roomLogsLimit;
+      if(prefs.roomLogsSearch) $("roomLogsSearch").value = prefs.roomLogsSearch;
+      if(prefs.roomLogsSort) $("roomLogsSort").value = prefs.roomLogsSort;
+      if(prefs.roomLogsOutliers) $("roomLogsOutliers").value = prefs.roomLogsOutliers;
+
+      setActivePreset(prefs.statsPreset || "");
+    }
+
+    function setActivePreset(presetKey){
+      var container = $("statsQuickRanges");
+      container.dataset.activePreset = presetKey || "";
+      $all("#statsQuickRanges .pillBtn").forEach(function(btn){
+        btn.classList.toggle("active", btn.getAttribute("data-range") === presetKey);
+      });
+    }
+
+    function applyStatsPreset(presetKey){
+      var today = new Date();
+      var start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      var end = new Date(start.getTime());
+      if(presetKey === "7d"){
+        start = new Date(end.getTime() - 6 * 24 * 3600 * 1000);
+      } else if(presetKey === "30d"){
+        start = new Date(end.getTime() - 29 * 24 * 3600 * 1000);
+      } else if(presetKey === "90d"){
+        start = new Date(end.getTime() - 89 * 24 * 3600 * 1000);
+      } else if(presetKey === "mtd"){
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+      }
+      $("statsStart").value = toDateInputValue(start);
+      $("statsEnd").value = toDateInputValue(end);
+      setActivePreset(presetKey);
+      savePreferences();
+    }
+
+    function clearActivePreset(){
+      setActivePreset("");
+      savePreferences();
+    }
+
+    function normalizeRangeInput(startId, endId, fallbackDays){
+      var endFallback = new Date();
+      var startFallback = new Date(endFallback.getTime() - fallbackDays * 24 * 3600 * 1000);
+      var start = parseDateInput($(startId).value, startFallback);
+      var end = parseDateInput($(endId).value, endFallback);
+      if(start.getTime() > end.getTime()){
+        var swap = start;
+        start = end;
+        end = swap;
+        $(startId).value = toDateInputValue(start);
+        $(endId).value = toDateInputValue(end);
+      }
+      return { start: start, end: end };
+    }
+
+    function getStatsRange(){
+      var normalized = normalizeRangeInput("statsStart", "statsEnd", 6);
+      return {
+        start: normalized.start,
+        end: normalized.end,
+        startIso: normalized.start.toISOString(),
+        endIso: new Date(normalized.end.getTime() + 24 * 3600 * 1000).toISOString()
+      };
+    }
+
+    function getRoomLogsRange(){
+      var normalized = normalizeRangeInput("roomLogsStart", "roomLogsEnd", 29);
+      return {
+        start: normalized.start,
+        endExclusive: new Date(normalized.end.getTime() + 24 * 3600 * 1000),
+        limit: Math.max(25, Math.min(500, Number($("roomLogsLimit").value || 100)))
+      };
+    }
+
+    function getSelectedLogType(){
+      return $("roomLogsType").value === "cleaning" ? "cleaning" : "room";
+    }
+
+    function getLogTypeConfig(){
+      if(getSelectedLogType() === "cleaning"){
+        return {
+          type: "cleaning",
+          table: "cleaning_sessions",
+          selectColumns: "id, room_name, duration_ms, started_at, ended_at",
+          labelPlural: "cleaning session(s)",
+          labelSingular: "cleaning session",
+          emptyMessage: "No closed cleaning sessions found for this range."
+        };
+      }
+      return {
+        type: "room",
+        table: "room_sessions",
+        selectColumns: "id, room_name, doctor_name, duration_ms, started_at, ended_at",
+        labelPlural: "room session(s)",
+        labelSingular: "room session",
+        emptyMessage: "No closed room sessions found for this range."
+      };
+    }
+
+    async function hasAuthenticatedSession(){
+      if(!supabase) return false;
+      var sess = await supabase.auth.getSession();
+      return !!(sess && sess.data && sess.data.session);
+    }
+
+    async function requireAuthenticatedSession(forLogs){
+      if(!supabase){
+        setStatus("Supabase not ready.");
+        if(forLogs) setRoomLogsStatus("Supabase not ready.");
+        return false;
+      }
+      if(await hasAuthenticatedSession()) return true;
+      setStatus("Login required to load analytics.");
+      if(forLogs) setRoomLogsStatus("Login required to load logs.");
+      return false;
+    }
+
+    function getSelectedGroupBy(){
+      return $("statsGroupBy").value || "day";
+    }
+
+    function getSelectedDoctor(){
+      return ($("statsDoctorFilter").value || "").trim();
+    }
+
+    function getSelectedGraphMode(){
+      return ($("statsGraphMode").value || "appointments").trim();
+    }
+
+    function getSelectedTrendMetric(){
+      return ($("statsTrendMetric").value || "avg_duration").trim();
+    }
+
+    function getSeriesColor(index){
+      var palette = ["#38bdf8", "#5eead4", "#fbbf24", "#fb7185", "#a78bfa", "#34d399", "#f97316", "#60a5fa"];
+      return palette[index % palette.length];
+    }
+
+    function populateDoctorFilter(roomRows){
+      var select = $("statsDoctorFilter");
+      if(!select) return;
+      var current = (select.dataset.pendingValue || getSelectedDoctor() || "").trim();
+      var doctors = {};
+      for(var i = 0; i < (roomRows || []).length; i++){
+        var name = (roomRows[i].doctor_name || "").trim();
+        if(name) doctors[name] = true;
+      }
+      var names = Object.keys(doctors).sort(function(a, b){ return a.localeCompare(b); });
+      select.innerHTML = '<option value="">All doctors</option><option value="__comparison__">Comparison</option>';
+      for(var j = 0; j < names.length; j++){
+        var option = document.createElement("option");
+        option.value = names[j];
+        option.textContent = names[j];
+        select.appendChild(option);
+      }
+      if(current === "__comparison__") select.value = current;
+      else if(current && doctors[current]) select.value = current;
+      else select.value = "";
+      delete select.dataset.pendingValue;
+    }
+
+    function updateTrendMeta(graphMode, metricMode){
+      var doctorField = $("statsDoctorFilter");
+      var title = $("trendTitle");
+      var datasetLabel = graphMode === "cleaning" ? "Cleaning" : "Appointment";
+      var metricLabel = "average duration";
+      if(metricMode === "median_duration") metricLabel = "median duration";
+      else if(metricMode === "count") metricLabel = "session count";
+      else if(metricMode === "total_hours") metricLabel = "total hours";
+
+      if(title){
+        title.textContent = datasetLabel + " trend by selected period (" + metricLabel + ")";
+      }
+      if(doctorField){
+        doctorField.disabled = (graphMode === "cleaning");
+      }
+    }
+
+    function getRangeDayCount(){
+      var range = getStatsRange();
+      var diff = range.endIso ? (new Date(range.endIso).getTime() - range.start.getTime()) : 0;
+      if(!isFinite(diff) || diff <= 0) return 1;
+      return Math.max(1, Math.round(diff / (24 * 3600 * 1000)));
+    }
+
+    function getWeekNumber(date){
+      var d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      var dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    }
+
+    function getLocalPeriodKey(date, groupBy){
+      var d = new Date(date);
+      if(isNaN(d.getTime())) return "";
+      if(groupBy === "month"){
+        return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+      }
+      if(groupBy === "week"){
+        var weekStart = new Date(d);
+        var day = weekStart.getDay();
+        var diff = day === 0 ? -6 : (1 - day);
+        weekStart.setDate(weekStart.getDate() + diff);
+        return weekStart.getFullYear() + "-W" + String(getWeekNumber(weekStart)).padStart(2, "0");
+      }
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+
+    function labelPeriodKey(key, groupBy){
+      if(!key) return "Unknown";
+      if(groupBy === "month"){
+        var parts = key.split("-");
+        var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+        return d.toLocaleDateString([], { month: "short", year: "numeric" });
+      }
+      if(groupBy === "week"){
+        var m = key.match(/^(\d{4})-W(\d{2})$/);
+        return m ? ("Week " + m[2] + ", " + m[1]) : key;
+      }
+      var dayDate = new Date(key + "T00:00:00");
+      return isNaN(dayDate.getTime()) ? key : dayDate.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    function getAllPeriodKeys(groupBy){
+      var range = getStatsRange();
+      var keys = {};
+      var cursor = new Date(range.start.getTime());
+      var endExclusive = new Date(range.end.getTime() + 24 * 3600 * 1000);
+      while(cursor.getTime() < endExclusive.getTime()){
+        keys[getLocalPeriodKey(cursor, groupBy)] = true;
+        cursor = new Date(cursor.getTime() + 24 * 3600 * 1000);
+      }
+      return Object.keys(keys).sort();
+    }
+
+    function createBucket(){
+      return { count: 0, total: 0, durations: [] };
+    }
+
+    function accumulateBuckets(rows, groupBy){
+      var map = {};
+      for(var i = 0; i < rows.length; i++){
+        var key = getLocalPeriodKey(rows[i].started_at, groupBy);
+        if(!key) continue;
+        if(!map[key]) map[key] = createBucket();
+        var duration = Number(rows[i].duration_ms || 0);
+        if(isFinite(duration) && duration >= 0){
+          map[key].count++;
+          map[key].total += duration;
+          map[key].durations.push(duration);
+        }
+      }
+      return map;
+    }
+
+    function getMetricValueFromBucket(bucket, metricMode){
+      if(!bucket) return 0;
+      if(metricMode === "count") return bucket.count || 0;
+      if(metricMode === "total_hours") return (bucket.total || 0) / 3600000;
+      if(metricMode === "median_duration") return bucket.count ? median(bucket.durations || []) : 0;
+      return bucket.count ? ((bucket.total || 0) / bucket.count) : 0;
+    }
+
+    function formatMetricValue(value, metricMode){
+      if(metricMode === "count") return formatCount(value);
+      if(metricMode === "total_hours") return formatCount(value) + " hrs";
+      return msToHMS(value);
+    }
+
+    function buildSeriesFromBucketMap(bucketMap, orderedKeys, groupBy, metricMode, name, color){
+      orderedKeys = orderedKeys || Object.keys(bucketMap || {}).sort();
+      return {
+        name: name,
+        color: color,
+        points: orderedKeys.map(function(key){
+          var bucket = bucketMap[key] || createBucket();
+          return {
+            label: labelPeriodKey(key, groupBy),
+            metricValue: getMetricValueFromBucket(bucket, metricMode),
+            count: bucket.count || 0,
+            avgDurationMs: bucket.count ? ((bucket.total || 0) / bucket.count) : 0,
+            medianDurationMs: bucket.count ? median(bucket.durations || []) : 0,
+            totalDurationMs: bucket.total || 0
+          };
+        })
+      };
+    }
+
+    function renderTrendChart(seriesList, options){
+      var el = $("trendChart");
+      var legend = $("trendLegend");
+      var tooltip = $("trendTooltip");
+      options = options || {};
+      var emptyMessage = options.emptyMessage || "No session data available for this range.";
+      var valueFormatter = options.valueFormatter || function(value){ return String(value); };
+      var tooltipLabel = options.tooltipLabel || "Metric";
+
+      if(!seriesList || !seriesList.length || !seriesList.some(function(series){
+        return (series.points || []).some(function(point){ return Number(point.metricValue || 0) > 0; });
+      })){
+        el.innerHTML = '<div class="emptyState">' + escapeHtml(emptyMessage) + '</div>';
+        if(legend) legend.innerHTML = "";
+        if(tooltip){
+          tooltip.className = "chartTooltip";
+          tooltip.textContent = "";
+        }
+        return;
+      }
+
+      var width = 820;
+      var height = 280;
+      var padX = 48;
+      var padTop = 18;
+      var padBottom = 44;
+      var chartHeight = height - padTop - padBottom;
+      var innerWidth = width - (padX * 2);
+      var maxValue = 1;
+      var labelCount = 0;
+
+      seriesList.forEach(function(series){
+        var points = series.points || [];
+        labelCount = Math.max(labelCount, points.length);
+        points.forEach(function(point){
+          maxValue = Math.max(maxValue, Number(point.metricValue || 0));
+        });
+      });
+
+      function yFor(value){
+        return padTop + (chartHeight - ((value / maxValue) * chartHeight));
+      }
+
+      var labels = "";
+      var dots = "";
+      var paths = "";
+      var labelSource = (seriesList[0] && seriesList[0].points) ? seriesList[0].points : [];
+
+      seriesList.forEach(function(series){
+        var points = series.points || [];
+        var durationPath = "";
+        points.forEach(function(point, idx){
+          var x = points.length === 1 ? (width / 2) : (padX + (innerWidth * idx / Math.max(1, points.length - 1)));
+          var y = yFor(Number(point.metricValue || 0));
+          durationPath += (idx ? " L " : "M ") + x + " " + y;
+          dots += '<circle class="chartPoint" data-series="' + escapeHtml(series.name || "") + '" data-label="' + escapeHtml(point.label || "") + '" data-metric="' + escapeHtml(valueFormatter(point.metricValue || 0)) + '" data-count="' + escapeHtml(String(point.count || 0)) + '" data-average="' + escapeHtml(msToHMS(point.avgDurationMs || 0)) + '" data-median="' + escapeHtml(msToHMS(point.medianDurationMs || 0)) + '" data-total="' + escapeHtml(formatCount((point.totalDurationMs || 0) / 3600000) + " hrs") + '" cx="' + x + '" cy="' + y + '" r="5" fill="' + escapeHtml(series.color) + '" style="cursor:pointer"></circle>';
+        });
+        paths += '<path d="' + durationPath + '" fill="none" stroke="' + escapeHtml(series.color) + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>';
+      });
+
+      labelSource.forEach(function(point, idx){
+        var x = labelSource.length === 1 ? (width / 2) : (padX + (innerWidth * idx / Math.max(1, labelSource.length - 1)));
+        labels += '<text x="' + x + '" y="' + (height - 16) + '" text-anchor="middle" fill="var(--muted)" font-size="11">' + escapeHtml(point.label || "") + '</text>';
+      });
+
+      var grid = "";
+      for(var g = 0; g < 4; g++){
+        var value = maxValue * (1 - (g / 3));
+        var y = padTop + (chartHeight * g / 3);
+        grid += '<line x1="' + padX + '" y1="' + y + '" x2="' + (width - padX) + '" y2="' + y + '" stroke="rgba(148,163,184,.14)" stroke-width="1"></line>';
+        grid += '<text x="10" y="' + (y + 4) + '" fill="var(--muted)" font-size="11">' + escapeHtml(valueFormatter(value)) + '</text>';
+      }
+
+      el.innerHTML =
+        '<svg viewBox="0 0 ' + width + ' ' + height + '" width="100%" height="280" role="img" aria-label="Trend chart">'
+        + grid
+        + paths
+        + dots
+        + labels
+        + '</svg>';
+
+      if(legend){
+        legend.innerHTML = seriesList.map(function(series){
+          return '<span class="legendKey"><span class="legendSwatch" style="background:' + escapeHtml(series.color) + ';"></span>' + escapeHtml(series.name) + '</span>';
+        }).join("");
+      }
+
+      var wrap = el.parentNode;
+      var pointEls = el.querySelectorAll(".chartPoint");
+      Array.prototype.forEach.call(pointEls, function(point){
+        point.addEventListener("mousemove", function(evt){
+          if(!tooltip || !wrap) return;
+          var wrapRect = wrap.getBoundingClientRect();
+          tooltip.innerHTML =
+            '<strong style="display:block; margin-bottom:4px;">' + escapeHtml(point.getAttribute("data-series") || "") + '</strong>'
+            + '<div style="margin-bottom:4px;">' + escapeHtml(point.getAttribute("data-label") || "") + '</div>'
+            + '<div>' + escapeHtml(tooltipLabel) + ': ' + escapeHtml(point.getAttribute("data-metric") || "0") + '</div>'
+            + '<div>Count: ' + escapeHtml(point.getAttribute("data-count") || "0") + '</div>'
+            + '<div>Avg: ' + escapeHtml(point.getAttribute("data-average") || "00:00:00") + '</div>'
+            + '<div>Median: ' + escapeHtml(point.getAttribute("data-median") || "00:00:00") + '</div>'
+            + '<div>Total: ' + escapeHtml(point.getAttribute("data-total") || "0 hrs") + '</div>';
+          tooltip.style.left = (evt.clientX - wrapRect.left + 12) + "px";
+          tooltip.style.top = (evt.clientY - wrapRect.top - 18) + "px";
+          tooltip.className = "chartTooltip show";
+        });
+        point.addEventListener("mouseleave", function(){
+          if(!tooltip) return;
+          tooltip.className = "chartTooltip";
+        });
+      });
+    }
+
+    function renderBreakdownTables(roomRows, cleaningRows, filteredRoomRows, selectedDoctor, isComparison){
+      var doctorBody = $("doctorBreakdownBody");
+      var roomBody = $("roomBreakdownBody");
+      var analysisStatus = $("analysisStatus");
+      var doctorSource = isComparison ? roomRows : filteredRoomRows;
+      var doctorMap = {};
+      var roomMap = {};
+      var totalVisits = doctorSource.length;
+
+      doctorSource.forEach(function(row){
+        var doctor = (row.doctor_name || "Unassigned").trim() || "Unassigned";
+        if(!doctorMap[doctor]){
+          doctorMap[doctor] = { count: 0, total: 0, durations: [] };
+        }
+        var duration = Number(row.duration_ms || 0);
+        if(isFinite(duration) && duration >= 0){
+          doctorMap[doctor].count++;
+          doctorMap[doctor].total += duration;
+          doctorMap[doctor].durations.push(duration);
+        }
+      });
+
+      filteredRoomRows.forEach(function(row){
+        var room = (row.room_name || "(unnamed room)").trim() || "(unnamed room)";
+        if(!roomMap[room]){
+          roomMap[room] = { visits: 0, total: 0, cleanings: 0, lastUsed: "" };
+        }
+        var duration = Number(row.duration_ms || 0);
+        if(isFinite(duration) && duration >= 0){
+          roomMap[room].visits++;
+          roomMap[room].total += duration;
+        }
+        if(row.started_at && (!roomMap[room].lastUsed || new Date(row.started_at).getTime() > new Date(roomMap[room].lastUsed).getTime())){
+          roomMap[room].lastUsed = row.started_at;
+        }
+      });
+
+      cleaningRows.forEach(function(row){
+        var room = (row.room_name || "(unnamed room)").trim() || "(unnamed room)";
+        if(!roomMap[room]){
+          roomMap[room] = { visits: 0, total: 0, cleanings: 0, lastUsed: "" };
+        }
+        roomMap[room].cleanings++;
+        if(row.started_at && (!roomMap[room].lastUsed || new Date(row.started_at).getTime() > new Date(roomMap[room].lastUsed).getTime())){
+          roomMap[room].lastUsed = row.started_at;
+        }
+      });
+
+      var doctorRows = Object.keys(doctorMap).sort(function(a, b){
+        return doctorMap[b].count - doctorMap[a].count || a.localeCompare(b);
+      });
+      if(!doctorRows.length){
+        doctorBody.innerHTML = '<tr><td colspan="6" class="muted">No doctor data available for the current filters.</td></tr>';
+      } else {
+        doctorBody.innerHTML = doctorRows.map(function(name){
+          var item = doctorMap[name];
+          var avg = item.count ? item.total / item.count : 0;
+          var med = item.count ? median(item.durations) : 0;
+          var share = totalVisits ? (item.count / totalVisits) * 100 : 0;
+          return '<tr>'
+            + '<td>' + escapeHtml(name) + '</td>'
+            + '<td class="numeric">' + escapeHtml(String(item.count)) + '</td>'
+            + '<td class="numeric">' + escapeHtml(msToHMS(avg)) + '</td>'
+            + '<td class="numeric">' + escapeHtml(msToHMS(med)) + '</td>'
+            + '<td class="numeric">' + escapeHtml(formatCount(item.total / 3600000)) + '</td>'
+            + '<td class="numeric">' + escapeHtml(formatPercent(share)) + '</td>'
+            + '</tr>';
+        }).join("");
+      }
+
+      var roomRowsSorted = Object.keys(roomMap).sort(function(a, b){
+        return roomMap[b].visits - roomMap[a].visits || a.localeCompare(b);
+      });
+      if(!roomRowsSorted.length){
+        roomBody.innerHTML = '<tr><td colspan="6" class="muted">No room data available for the current filters.</td></tr>';
+      } else {
+        roomBody.innerHTML = roomRowsSorted.map(function(name){
+          var item = roomMap[name];
+          var avg = item.visits ? item.total / item.visits : 0;
+          return '<tr>'
+            + '<td>' + escapeHtml(name) + '</td>'
+            + '<td class="numeric">' + escapeHtml(String(item.visits)) + '</td>'
+            + '<td class="numeric">' + escapeHtml(msToHMS(avg)) + '</td>'
+            + '<td class="numeric">' + escapeHtml(String(item.cleanings)) + '</td>'
+            + '<td class="numeric">' + escapeHtml(formatCount(item.total / 3600000)) + '</td>'
+            + '<td class="numeric">' + escapeHtml(formatDateOnly(item.lastUsed)) + '</td>'
+            + '</tr>';
+        }).join("");
+      }
+
+      analysisStatus.textContent = selectedDoctor && !isComparison
+        ? ('Showing operational detail for "' + selectedDoctor + '".')
+        : (isComparison ? "Showing side-by-side doctor comparison across the selected range." : "Showing all doctors and rooms for the selected range.");
+    }
+
+    function renderStats(roomRows, cleaningRows){
+      roomRows = roomRows || [];
+      cleaningRows = cleaningRows || [];
+      populateDoctorFilter(roomRows);
+
+      var graphMode = getSelectedGraphMode();
+      var metricMode = getSelectedTrendMetric();
+      updateTrendMeta(graphMode, metricMode);
+
+      var selectedDoctor = getSelectedDoctor();
+      var isComparison = (selectedDoctor === "__comparison__");
+      var filteredRoomRows = roomRows.filter(function(row){
+        var doctorName = (row.doctor_name || "").trim();
+        return !selectedDoctor || isComparison || doctorName === selectedDoctor;
+      });
+
+      var roomDur = filteredRoomRows.map(function(r){ return Number(r.duration_ms || 0); }).filter(function(v){ return isFinite(v) && v >= 0; });
+      var roomTotal = roomDur.reduce(function(sum, v){ return sum + v; }, 0);
+      var roomAvg = roomDur.length ? roomTotal / roomDur.length : 0;
+      var roomMed = roomDur.length ? median(roomDur) : 0;
+      var roomP90 = roomDur.length ? percentile(roomDur, 0.9) : 0;
+
+      var cleanDur = cleaningRows.map(function(r){ return Number(r.duration_ms || 0); }).filter(function(v){ return isFinite(v) && v >= 0; });
+      var cleanTotal = cleanDur.reduce(function(sum, v){ return sum + v; }, 0);
+      var cleanAvg = cleanDur.length ? cleanTotal / cleanDur.length : 0;
+
+      var uniqueRooms = {};
+      var byHour = {};
+      var byWeekday = {};
+      var byDoctorCounts = {};
+      var weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      var shortOutliers = 0;
+      var longOutliers = 0;
+
+      filteredRoomRows.forEach(function(row){
+        var roomNameSeen = (row.room_name || "").trim();
+        var doctorNameSeen = (row.doctor_name || "Unassigned").trim() || "Unassigned";
+        var durationMs = Number(row.duration_ms || 0);
+        if(roomNameSeen) uniqueRooms[roomNameSeen] = true;
+        byDoctorCounts[doctorNameSeen] = (byDoctorCounts[doctorNameSeen] || 0) + 1;
+        if(isFinite(durationMs) && durationMs >= 0){
+          if(durationMs > 0 && durationMs < 5 * 60000) shortOutliers++;
+          else if(durationMs > 180 * 60000) longOutliers++;
+        }
+        var started = new Date(row.started_at);
+        if(!isNaN(started.getTime())){
+          var hour = started.getHours();
+          byHour[hour] = (byHour[hour] || 0) + 1;
+          var weekday = weekdayNames[started.getDay()];
+          byWeekday[weekday] = (byWeekday[weekday] || 0) + 1;
+        }
+      });
+
+      var staffedRooms = Object.keys(uniqueRooms).length;
+      var peakHour = null;
+      var peakHourCount = -1;
+      Object.keys(byHour).forEach(function(hourKey){
+        if(byHour[hourKey] > peakHourCount){
+          peakHourCount = byHour[hourKey];
+          peakHour = Number(hourKey);
+        }
+      });
+
+      var busiestWeekday = "";
+      var busiestWeekdayCount = -1;
+      Object.keys(byWeekday).forEach(function(dayKey){
+        if(byWeekday[dayKey] > busiestWeekdayCount){
+          busiestWeekdayCount = byWeekday[dayKey];
+          busiestWeekday = dayKey;
+        }
+      });
+
+      var topDoctor = "";
+      var topDoctorCount = -1;
+      Object.keys(byDoctorCounts).forEach(function(name){
+        if(byDoctorCounts[name] > topDoctorCount){
+          topDoctorCount = byDoctorCounts[name];
+          topDoctor = name;
+        }
+      });
+
+      $("visitCount").textContent = String(filteredRoomRows.length);
+      $("avgRoomTime").textContent = msToHMS(roomAvg);
+      $("medianRoomTime").textContent = msToHMS(roomMed);
+      $("p90RoomTime").textContent = msToHMS(roomP90);
+      $("cleanCount").textContent = String(cleaningRows.length);
+      $("avgCleanTime").textContent = msToHMS(cleanAvg);
+      $("roomHoursTotal").textContent = formatCount(roomTotal / 3600000);
+      $("uniqueRoomsCount").textContent = String(staffedRooms);
+
+      var groupBy = getSelectedGroupBy();
+      var orderedKeys = getAllPeriodKeys(groupBy);
+      var seriesList = [];
+
+      if(graphMode === "cleaning"){
+        seriesList.push(buildSeriesFromBucketMap(
+          accumulateBuckets(cleaningRows, groupBy),
+          orderedKeys,
+          groupBy,
+          metricMode,
+          "Cleaning",
+          "#5eead4"
+        ));
+      } else if(isComparison){
+        var byDoctorSeries = {};
+        roomRows.forEach(function(row){
+          var doctorName = (row.doctor_name || "").trim();
+          if(!doctorName) return;
+          if(!byDoctorSeries[doctorName]) byDoctorSeries[doctorName] = [];
+          byDoctorSeries[doctorName].push(row);
+        });
+        Object.keys(byDoctorSeries).sort(function(a, b){ return a.localeCompare(b); }).forEach(function(name, idx){
+          seriesList.push(buildSeriesFromBucketMap(
+            accumulateBuckets(byDoctorSeries[name], groupBy),
+            orderedKeys,
+            groupBy,
+            metricMode,
+            name,
+            getSeriesColor(idx)
+          ));
+        });
+      } else {
+        seriesList.push(buildSeriesFromBucketMap(
+          accumulateBuckets(filteredRoomRows, groupBy),
+          orderedKeys,
+          groupBy,
+          metricMode,
+          selectedDoctor || "All doctors",
+          "#38bdf8"
+        ));
+      }
+
+      renderTrendChart(seriesList, {
+        tooltipLabel: (metricMode === "count")
+          ? "Sessions"
+          : (metricMode === "total_hours" ? "Total hours" : (metricMode === "median_duration" ? "Median duration" : "Average duration")),
+        valueFormatter: function(value){ return formatMetricValue(value, metricMode); },
+        emptyMessage: graphMode === "cleaning"
+          ? "No cleaning data available for this range."
+          : (isComparison ? "No appointment data available to compare for this range." : "No appointment data available for this range.")
+      });
+
+      var outlierCount = shortOutliers + longOutliers;
+      var outlierRate = filteredRoomRows.length ? ((outlierCount / filteredRoomRows.length) * 100) : 0;
+      $("statsHighlights").innerHTML =
+        '<div class="highlightItem"><strong>Busiest weekday</strong><span>' + escapeHtml(busiestWeekday || "—") + (busiestWeekdayCount > -1 ? (' (' + busiestWeekdayCount + ')') : "") + '</span></div>' +
+        '<div class="highlightItem"><strong>Peak start hour</strong><span>' + escapeHtml(peakHour == null ? "—" : formatHourLabel(peakHour)) + (peakHourCount > -1 ? (' (' + peakHourCount + ')') : "") + '</span></div>' +
+        '<div class="highlightItem"><strong>Top doctor</strong><span>' + escapeHtml(topDoctor || "—") + (topDoctorCount > -1 ? (' (' + topDoctorCount + ' visits)') : "") + '</span></div>' +
+        '<div class="highlightItem"><strong>Outlier rate</strong><span>' + escapeHtml(formatPercent(outlierRate)) + '</span></div>' +
+        '<div class="highlightItem"><strong>Graph view</strong><span>' + escapeHtml(graphMode === "cleaning" ? "Cleaning" : (isComparison ? "Doctor comparison" : (selectedDoctor || "All doctors"))) + '</span></div>' +
+        '<div class="highlightItem"><strong>Range coverage</strong><span>' + escapeHtml(String(getRangeDayCount())) + ' day(s)</span></div>';
+
+      renderBreakdownTables(roomRows, cleaningRows, filteredRoomRows, selectedDoctor, isComparison);
+    }
+
+    async function refreshStats(){
+      if(!await requireAuthenticatedSession(false)) return;
+      var token = ++statsRequestToken;
+      setStatus("Loading stats…");
+      $("refreshStatsBtn").disabled = true;
+      var range = getStatsRange();
+      try{
+        var results = await Promise.all([
+          supabase
+            .from("room_sessions")
+            .select("room_name, doctor_name, duration_ms, started_at, ended_at")
+            .gte("started_at", range.startIso)
+            .lt("started_at", range.endIso)
+            .not("ended_at", "is", null),
+          supabase
+            .from("cleaning_sessions")
+            .select("room_name, duration_ms, started_at, ended_at")
+            .gte("started_at", range.startIso)
+            .lt("started_at", range.endIso)
+            .not("ended_at", "is", null)
+        ]);
+        if(token !== statsRequestToken) return;
+        if(results[0].error) throw results[0].error;
+        if(results[1].error) throw results[1].error;
+
+        lastRows = {
+          room: results[0].data || [],
+          cleaning: results[1].data || []
+        };
+        renderStats(lastRows.room, lastRows.cleaning);
+        setStatus("Stats updated.");
+      } catch(e){
+        console.error(e);
+        setStatus("Failed to load stats: " + getErrorMessage(e));
+      } finally {
+        $("refreshStatsBtn").disabled = false;
+      }
+    }
+
+    function isShortOutlier(durationMs){
+      return durationMs > 0 && durationMs < 5 * 60000;
+    }
+
+    function isLongOutlier(durationMs){
+      return durationMs > 180 * 60000;
+    }
+
+    function getLogSearchTerm(){
+      return ($("roomLogsSearch").value || "").trim().toLowerCase();
+    }
+
+    function getLogSortMode(){
+      return ($("roomLogsSort").value || "newest").trim();
+    }
+
+    function getLogOutlierMode(){
+      return ($("roomLogsOutliers").value || "all").trim();
+    }
+
+    function applyLogFilters(rows){
+      var search = getLogSearchTerm();
+      var sortMode = getLogSortMode();
+      var outlierMode = getLogOutlierMode();
+      var filtered = (rows || []).filter(function(row){
+        var durationMs = Number(row.duration_ms || 0);
+        var shortOutlier = isShortOutlier(durationMs);
+        var longOutlier = isLongOutlier(durationMs);
+        if(outlierMode === "short" && !shortOutlier) return false;
+        if(outlierMode === "long" && !longOutlier) return false;
+        if(outlierMode === "outliers" && !(shortOutlier || longOutlier)) return false;
+        if(!search) return true;
+        var haystack = [
+          row.room_name || "",
+          row.doctor_name || "",
+          row.started_at || "",
+          row.ended_at || "",
+          formatDateTime(row.started_at),
+          formatDateTime(row.ended_at)
+        ].join(" ").toLowerCase();
+        return haystack.indexOf(search) !== -1;
+      });
+
+      filtered.sort(function(a, b){
+        var aStart = new Date(a.started_at || 0).getTime();
+        var bStart = new Date(b.started_at || 0).getTime();
+        var aDuration = Number(a.duration_ms || 0);
+        var bDuration = Number(b.duration_ms || 0);
+        if(sortMode === "oldest") return aStart - bStart;
+        if(sortMode === "longest") return bDuration - aDuration || bStart - aStart;
+        if(sortMode === "shortest") return aDuration - bDuration || bStart - aStart;
+        if(sortMode === "room_az") return String(a.room_name || "").localeCompare(String(b.room_name || "")) || bStart - aStart;
+        return bStart - aStart;
+      });
+
+      return filtered;
+    }
+
+    function renderRoomLogsSummary(rawRows, visibleRows){
+      rawRows = rawRows || [];
+      visibleRows = visibleRows || [];
+      var shortCount = 0;
+      var longCount = 0;
+      visibleRows.forEach(function(row){
+        var durationMs = Number(row.duration_ms || 0);
+        if(isShortOutlier(durationMs)) shortCount++;
+        if(isLongOutlier(durationMs)) longCount++;
+      });
+      $("roomLogsSummary").innerHTML =
+        '<span class="summaryPill">Loaded <strong>' + escapeHtml(String(rawRows.length)) + '</strong></span>' +
+        '<span class="summaryPill">Visible <strong>' + escapeHtml(String(visibleRows.length)) + '</strong></span>' +
+        '<span class="summaryPill">Selected <strong>' + escapeHtml(String(getSelectedLogIds().filter(function(id){
+          return visibleRows.some(function(row){ return row.id === id; });
+        }).length)) + '</strong></span>' +
+        '<span class="summaryPill">Short outliers <strong>' + escapeHtml(String(shortCount)) + '</strong></span>' +
+        '<span class="summaryPill">Long outliers <strong>' + escapeHtml(String(longCount)) + '</strong></span>';
+    }
+
+    function renderRoomLogs(rows){
+      rawLogRows = (rows || []).slice();
+      currentLogRows = applyLogFilters(rawLogRows);
+      var cfg = getLogTypeConfig();
+      var list = $("roomLogsList");
+      list.innerHTML = "";
+      updateLogSelectionUI();
+      renderRoomLogsSummary(rawLogRows, currentLogRows);
+
+      if(!rawLogRows.length){
+        list.innerHTML = '<div class="emptyState">' + escapeHtml(cfg.emptyMessage) + '</div>';
+        return;
+      }
+      if(!currentLogRows.length){
+        list.innerHTML = '<div class="emptyState">No logs match the current search and outlier filters.</div>';
+        return;
+      }
+
+      currentLogRows.forEach(function(row){
+        var el = document.createElement("div");
+        el.className = "logItem" + (selectedLogIds[row.id] ? " selected" : "");
+        var durationMs = Number(row.duration_ms || 0);
+        var badges = '<span class="logBadge">' + escapeHtml(msToHMS(durationMs)) + '</span>';
+        if((row.doctor_name || "").trim()) badges += '<span class="logBadge success">' + escapeHtml(row.doctor_name) + '</span>';
+        if(isShortOutlier(durationMs)) badges += '<span class="logBadge warn">Short outlier</span>';
+        else if(isLongOutlier(durationMs)) badges += '<span class="logBadge danger">Long outlier</span>';
+
+        el.innerHTML =
+          '<div class="logSelect">'
+            + '<input class="logCheck" type="checkbox" ' + (selectedLogIds[row.id] ? 'checked' : '') + '/>'
+            + '<div class="logMain">'
+              + '<div class="logTitle">'
+                + '<span class="logName">' + escapeHtml(row.room_name || "(unnamed room)") + '</span>'
+                + badges
+              + '</div>'
+              + '<div class="logMeta">'
+                + '<span>Started ' + escapeHtml(formatDateTime(row.started_at)) + '</span>'
+                + '<span>Ended ' + escapeHtml(formatDateTime(row.ended_at)) + '</span>'
+                + '<span>ID ' + escapeHtml(String(row.id || "—").slice(0, 8)) + '</span>'
+              + '</div>'
+            + '</div>'
+          + '</div>'
+          + '<div class="logActions"><button class="danger" type="button">Delete</button></div>';
+
+        el.querySelector(".logCheck").addEventListener("change", function(evt){
+          selectedLogIds[row.id] = !!evt.target.checked;
+          el.className = "logItem" + (selectedLogIds[row.id] ? " selected" : "");
+          updateLogSelectionUI();
+          renderRoomLogsSummary(rawLogRows, currentLogRows);
+        });
+        el.querySelector("button").addEventListener("click", function(){
+          deleteRoomLog(row);
+        });
+        list.appendChild(el);
+      });
+      updateLogSelectionUI();
+      renderRoomLogsSummary(rawLogRows, currentLogRows);
+    }
+
+    async function refreshRoomLogs(){
+      if(!await requireAuthenticatedSession(true)) return;
+      var token = ++logsRequestToken;
+      var cfg = getLogTypeConfig();
+      setRoomLogsStatus("Loading logs…");
+      $("refreshRoomLogsBtn").disabled = true;
+      var range = getRoomLogsRange();
+      try{
+        var res = await supabase
+          .from(cfg.table)
+          .select(cfg.selectColumns)
+          .gte("started_at", range.start.toISOString())
+          .lt("started_at", range.endExclusive.toISOString())
+          .not("ended_at", "is", null)
+          .order("started_at", { ascending: false })
+          .limit(range.limit);
+        if(token !== logsRequestToken) return;
+        if(res.error) throw res.error;
+        selectedLogIds = {};
+        renderRoomLogs(res.data || []);
+        setRoomLogsStatus("Showing " + currentLogRows.length + " of " + rawLogRows.length + " logged " + cfg.labelPlural + ".");
+      } catch(e){
+        console.error(e);
+        selectedLogIds = {};
+        renderRoomLogs([]);
+        setRoomLogsStatus("Failed to load logs: " + getErrorMessage(e));
+      } finally {
+        $("refreshRoomLogsBtn").disabled = false;
+      }
+    }
+
+    async function deleteRoomLog(row){
+      if(!row || !row.id) return;
+      var cfg = getLogTypeConfig();
+      if(!window.confirm('Delete logged ' + cfg.labelSingular + ' for "' + (row.room_name || "this room") + '"?')) return;
+      setRoomLogsStatus("Deleting log…");
+      try{
+        if(!await requireAuthenticatedSession(true)) return;
+        var res = await supabase.from(cfg.table).delete().eq("id", row.id);
+        if(res.error) throw res.error;
+        delete selectedLogIds[row.id];
+        setRoomLogsStatus("Log deleted.");
+        await refreshRoomLogs();
+        if(lastRows) refreshStats();
+      } catch(e){
+        console.error(e);
+        setRoomLogsStatus("Failed to delete log: " + getErrorMessage(e));
+      }
+    }
+
+    function toggleSelectAllLogs(){
+      if(!currentLogRows.length) return;
+      var ids = currentLogRows.map(function(row){ return row.id; }).filter(Boolean);
+      var allSelected = ids.length && ids.every(function(id){ return !!selectedLogIds[id]; });
+      ids.forEach(function(id){
+        selectedLogIds[id] = !allSelected;
+      });
+      renderRoomLogs(rawLogRows);
+      setRoomLogsStatus((!allSelected ? "Selected " : "Cleared ") + ids.length + " log(s).");
+    }
+
+    async function deleteSelectedLogs(){
+      var ids = getSelectedLogIds();
+      if(!ids.length) return;
+      var cfg = getLogTypeConfig();
+      if(!window.confirm("Delete " + ids.length + " selected " + cfg.labelPlural + "?")) return;
+      setRoomLogsStatus("Deleting selected logs…");
+      try{
+        if(!await requireAuthenticatedSession(true)) return;
+        var res = await supabase.from(cfg.table).delete().in("id", ids);
+        if(res.error) throw res.error;
+        selectedLogIds = {};
+        setRoomLogsStatus("Deleted " + ids.length + " log(s).");
+        await refreshRoomLogs();
+        if(lastRows) refreshStats();
+      } catch(e){
+        console.error(e);
+        setRoomLogsStatus("Failed to delete selected logs: " + getErrorMessage(e));
+      }
+    }
+
+    function exportRowsToCsv(rows, filename, header){
+      if(!rows || !rows.length){
+        return false;
+      }
+      var csv = header.join(",") + "\n";
+      rows.forEach(function(row){
+        csv += header.map(function(key){ return csvEscape(row[key]); }).join(",") + "\n";
+      });
+      var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return true;
+    }
+
+    function exportStatsCsv(){
+      if(!lastRows){
+        setStatus("Nothing to export yet. Refresh stats first.");
+        return;
+      }
+      var rows = [];
+      lastRows.room.forEach(function(row){
+        rows.push({
+          kind: "room_session",
+          started_at: row.started_at,
+          ended_at: row.ended_at,
+          duration_ms: row.duration_ms,
+          room_name: row.room_name,
+          doctor_name: row.doctor_name || ""
+        });
+      });
+      lastRows.cleaning.forEach(function(row){
+        rows.push({
+          kind: "cleaning_session",
+          started_at: row.started_at,
+          ended_at: row.ended_at,
+          duration_ms: row.duration_ms,
+          room_name: row.room_name,
+          doctor_name: ""
+        });
+      });
+      if(exportRowsToCsv(rows, "vet-room-board-stats.csv", ["kind", "started_at", "ended_at", "duration_ms", "room_name", "doctor_name"])){
+        setStatus("CSV exported.");
+      }
+    }
+
+    function exportVisibleLogsCsv(){
+      var cfg = getLogTypeConfig();
+      if(!currentLogRows.length){
+        setRoomLogsStatus("No visible logs to export.");
+        return;
+      }
+      var rows = currentLogRows.map(function(row){
+        return {
+          id: row.id,
+          type: cfg.type,
+          room_name: row.room_name || "",
+          doctor_name: row.doctor_name || "",
+          started_at: row.started_at || "",
+          ended_at: row.ended_at || "",
+          duration_ms: row.duration_ms || 0
+        };
+      });
+      if(exportRowsToCsv(rows, "vet-room-board-visible-logs.csv", ["id", "type", "room_name", "doctor_name", "started_at", "ended_at", "duration_ms"])){
+        setRoomLogsStatus("Visible logs exported.");
+      }
+    }
+
+    async function signup(){
+      var email = ($("email").value || "").trim();
+      var password = ($("password").value || "").trim();
+      if(!email || !password) return;
+      var res = await supabase.auth.signUp({ email: email, password: password });
+      if(res.error) alert(res.error.message);
+      else alert("Signed up. If email confirmation is enabled, confirm then login.");
+    }
+
+    async function login(){
+      var email = ($("email").value || "").trim();
+      var password = ($("password").value || "").trim();
+      if(!email || !password) return;
+      var res = await supabase.auth.signInWithPassword({ email: email, password: password });
+      if(res.error){
+        alert(res.error.message);
+        return;
+      }
+      updateAuthUI(true);
+      setStatus("Logged in. Loading analytics…");
+      refreshStats();
+      refreshRoomLogs();
+    }
+
+    async function logout(){
+      try{ await supabase.auth.signOut(); }catch(e){}
+      updateAuthUI(false);
+      setStatus("Logged out.");
+      setRoomLogsStatus("Login required to load logs.");
+    }
+
+    function rerenderStatsIfLoaded(){
+      if(lastRows) renderStats(lastRows.room, lastRows.cleaning);
+    }
+
+    function rerenderLogsIfLoaded(){
+      if(rawLogRows.length || currentLogRows.length){
+        renderRoomLogs(rawLogRows);
+        var cfg = getLogTypeConfig();
+        setRoomLogsStatus("Showing " + currentLogRows.length + " of " + rawLogRows.length + " logged " + cfg.labelPlural + ".");
+      }
+    }
+
+    async function refreshStatsIfAuthenticated(){
+      savePreferences();
+      if(await hasAuthenticatedSession()) refreshStats();
+      else setStatus("Filters saved. Login required to load analytics.");
+    }
+
+    async function refreshLogsIfAuthenticated(){
+      savePreferences();
+      if(await hasAuthenticatedSession()) refreshRoomLogs();
+      else setRoomLogsStatus("Filters saved. Login required to load logs.");
+    }
+
+    async function initSupabase(){
+      try{
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabase.auth.onAuthStateChange(function(event, session){
+          updateAuthUI(!!session);
+          if(session){
+            setStatus("Logged in. Loading analytics…");
+            refreshStats();
+            refreshRoomLogs();
+          } else {
+            setStatus("Login required to load analytics.");
+            setRoomLogsStatus("Login required to load logs.");
+          }
+        });
+        var sess = await supabase.auth.getSession();
+        var loggedIn = !!(sess && sess.data && sess.data.session);
+        updateAuthUI(loggedIn);
+        setStatus(loggedIn ? "Logged in. Loading analytics…" : "Login required to load analytics.");
+        setRoomLogsStatus(loggedIn ? "Loading logs…" : "Login required to load logs.");
+        if(loggedIn){
+          refreshStats();
+          refreshRoomLogs();
+        }
+      } catch(e){
+        console.error(e);
+        setStatus("Supabase init failed: " + getErrorMessage(e));
+        setRoomLogsStatus("Supabase init failed.");
+      }
+    }
+
+    defaultStatsDates();
+    defaultRoomLogDates();
+    restorePreferences();
+    updateLogSelectionUI();
+
+    $("refreshStatsBtn").addEventListener("click", refreshStats);
+    $("exportStatsCsvBtn").addEventListener("click", exportStatsCsv);
+    $("statsStart").addEventListener("change", function(){
+      clearActivePreset();
+      refreshStatsIfAuthenticated();
+    });
+    $("statsEnd").addEventListener("change", function(){
+      clearActivePreset();
+      refreshStatsIfAuthenticated();
+    });
+    $("statsGroupBy").addEventListener("change", function(){
+      savePreferences();
+      rerenderStatsIfLoaded();
+    });
+    $("statsDoctorFilter").addEventListener("change", function(){
+      savePreferences();
+      rerenderStatsIfLoaded();
+    });
+    $("statsGraphMode").addEventListener("change", function(){
+      savePreferences();
+      rerenderStatsIfLoaded();
+    });
+    $("statsTrendMetric").addEventListener("change", function(){
+      savePreferences();
+      rerenderStatsIfLoaded();
+    });
+    $all("#statsQuickRanges .pillBtn").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        applyStatsPreset(btn.getAttribute("data-range") || "");
+        refreshStatsIfAuthenticated();
+      });
+    });
+
+    $("selectAllLogsBtn").addEventListener("click", toggleSelectAllLogs);
+    $("deleteSelectedLogsBtn").addEventListener("click", deleteSelectedLogs);
+    $("exportVisibleLogsBtn").addEventListener("click", exportVisibleLogsCsv);
+    $("refreshRoomLogsBtn").addEventListener("click", refreshRoomLogs);
+    $("roomLogsType").addEventListener("change", refreshLogsIfAuthenticated);
+    $("roomLogsStart").addEventListener("change", refreshLogsIfAuthenticated);
+    $("roomLogsEnd").addEventListener("change", refreshLogsIfAuthenticated);
+    $("roomLogsLimit").addEventListener("change", refreshLogsIfAuthenticated);
+    $("roomLogsSearch").addEventListener("input", function(){
+      savePreferences();
+      rerenderLogsIfLoaded();
+    });
+    $("roomLogsSort").addEventListener("change", function(){
+      savePreferences();
+      rerenderLogsIfLoaded();
+    });
+    $("roomLogsOutliers").addEventListener("change", function(){
+      savePreferences();
+      rerenderLogsIfLoaded();
+    });
+
+    $("signupBtn").addEventListener("click", signup);
+    $("loginBtn").addEventListener("click", login);
+    $("logoutBtn").addEventListener("click", logout);
+
+    initSupabase();
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+{
+  "name": "roomboard",
+  "description": "Desktop RoomBoard app for clinic room status display and workflow updates.",
+  "version": "0.1.0",
+  "author": "RoomBoard",
+  "license": "UNLICENSED",
+  "main": "desktop/main.cjs",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "desktop:assets": "node scripts/generate-desktop-assets.mjs",
+    "desktop:dev": "electron .",
+    "predesktop:pack": "npm run desktop:assets",
+    "desktop:pack": "electron-builder --dir",
+    "predesktop:dist": "npm run desktop:assets",
+    "desktop:dist": "electron-builder",
+    "predesktop:dist:win": "npm run desktop:assets",
+    "desktop:dist:win": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "electron": "^41.2.1",
+    "electron-builder": "^26.8.1",
+    "png-to-ico": "^3.0.1",
+    "typescript": "^5.7.2"
+  },
+  "build": {
+    "appId": "com.roomboard.desktop",
+    "artifactName": "RoomBoard-Setup-Windows-x64.${ext}",
+    "directories": {
+      "buildResources": "build"
+    },
+    "productName": "RoomBoard",
+    "asar": true,
+    "files": [
+      "desktop/**/*",
+      "public/roomboard/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
