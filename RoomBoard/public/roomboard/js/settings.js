@@ -1,16 +1,20 @@
     // ===== Drawer controls =====
-    function openDrawer(){
-      closeQuickAdd();
-      document.body.className = (document.body.className + " drawerOpen").replace(/\s+/g," ").trim();
-      if(saving || pendingConfigSave || pendingAppointmentTypesSave || pendingBoardSave || Object.keys(settingsAutosaveJobs).length){
+	    function openDrawer(){
+	      closeQuickAdd();
+	      document.body.className = (document.body.className + " drawerOpen").replace(/\s+/g," ").trim();
+      if(saving || pendingConfigSave || pendingAppointmentTypesSave || pendingBoardSave || pendingUserSettingsSave || Object.keys(settingsAutosaveJobs).length){
         setSettingsSaveState("saving", "Saving changes…");
       } else {
         setSettingsSaveState("idle", "Autosave on");
       }
-      holdRemoteUpdates(SHORT_INTERACTION_HOLD_MS);
-      renderSettingsLists();
-      loadFeedbackChecklist(true);
-    }
+	      holdRemoteUpdates(SHORT_INTERACTION_HOLD_MS);
+	      renderSettingsLists();
+	      loadFeedbackChecklist(true);
+	      if(typeof window.syncStopwatchDiagnosticsUi === "function") window.syncStopwatchDiagnosticsUi();
+	      if($("stopwatchDiagnosticsPanel") && $("stopwatchDiagnosticsPanel").open && typeof window.runStopwatchDiagnostics === "function"){
+	        window.runStopwatchDiagnostics();
+	      }
+	    }
     function closeDrawer(){
       document.body.className = document.body.className.replace(/\bdrawerOpen\b/g,"").replace(/\s+/g," ").trim();
       flushPendingSettingsSaves();
@@ -284,19 +288,32 @@
   // Settings tabs
   function initSettingsTabs(){
     var tabs = document.getElementById("settingsTabs");
+    var select = document.getElementById("settingsTabSelect");
     if(!tabs) return;
+    function activateSettingsTab(tabId){
+      if(!tabId) return;
+      Array.prototype.forEach.call(tabs.querySelectorAll(".tabBtn"), function(b){
+        b.classList.toggle("active", b.getAttribute("data-tab") === tabId);
+      });
+      Array.prototype.forEach.call(document.querySelectorAll(".tabPanel"), function(p){
+        p.classList.toggle("active", p.id === tabId);
+      });
+      if(select) select.value = tabId;
+    }
     tabs.addEventListener("click", function(e){
       var btn = e.target && e.target.closest ? e.target.closest(".tabBtn") : null;
       if(!btn) return;
       var tabId = btn.getAttribute("data-tab");
       if(!tabId) return;
-      Array.prototype.forEach.call(tabs.querySelectorAll(".tabBtn"), function(b){
-        b.classList.toggle("active", b === btn);
-      });
-      Array.prototype.forEach.call(document.querySelectorAll(".tabPanel"), function(p){
-        p.classList.toggle("active", p.id === tabId);
-      });
+      activateSettingsTab(tabId);
     });
+    if(select){
+      select.addEventListener("change", function(){
+        activateSettingsTab(this.value);
+      });
+    }
+    var activeBtn = tabs.querySelector(".tabBtn.active");
+    activateSettingsTab(activeBtn ? activeBtn.getAttribute("data-tab") : "tabAccount");
   }
 
 
@@ -325,7 +342,7 @@
         }
       });
     }
-    if($("feedbackChecklist")){
+	    if($("feedbackChecklist")){
       $("feedbackChecklist").addEventListener("click", function(e){
         var node = e.target;
         if(!node || !node.getAttribute) return;
@@ -343,10 +360,25 @@
         var index = Number(node.getAttribute("data-feedback-index"));
         if(!isFinite(index)) return;
         toggleFeedbackItem(index);
-      });
-    }
-    $("openQuickAddBtn").addEventListener("click", function(){ openQuickAdd(); });
-    $("displayOnlyActiveSwitch").addEventListener("click", function(){
+	      });
+	    }
+	    if($("stopwatchDiagnosticsPanel")){
+	      $("stopwatchDiagnosticsPanel").addEventListener("toggle", function(){
+	        if(this.open && typeof window.runStopwatchDiagnostics === "function") window.runStopwatchDiagnostics();
+	      });
+	    }
+	    if($("runStopwatchDiagnosticsBtn")){
+	      $("runStopwatchDiagnosticsBtn").addEventListener("click", function(){
+	        if(typeof window.runStopwatchDiagnostics === "function") window.runStopwatchDiagnostics();
+	      });
+	    }
+	    if($("repairStopwatchCoverageBtn")){
+	      $("repairStopwatchCoverageBtn").addEventListener("click", function(){
+	        if(typeof window.repairStopwatchCoverageDiagnostics === "function") window.repairStopwatchCoverageDiagnostics();
+	      });
+	    }
+	    function toggleDisplayOnlyActive(){
+      if(typeof isMobileQuickViewEnabled === "function" && isMobileQuickViewEnabled()) return;
       state.settings.displayOnlyActive = !state.settings.displayOnlyActive;
       persistWindowUiSettings();
       scheduleUiRefresh({
@@ -356,6 +388,17 @@
         timerBindings: true
       });
       setStatus(state.settings.displayOnlyActive ? "Showing only active rooms" : "Showing all rooms");
+    }
+    $("openQuickAddBtn").addEventListener("click", function(){ openQuickAdd(); });
+    $("displayOnlyActiveSwitch").addEventListener("click", function(e){
+      if(e) e.stopPropagation();
+      toggleDisplayOnlyActive();
+    });
+    $("displayOnlyActiveWrap").addEventListener("click", function(e){
+      if(!window.matchMedia || !window.matchMedia("(max-width: 820px)").matches) return;
+      var target = e && e.target;
+      if(target && target.closest && target.closest("select")) return;
+      toggleDisplayOnlyActive();
     });
 	    $("displaySortSelect").addEventListener("change", function(){
 	      state.settings.displaySortMode = (this.value === "time") ? "time" : "room";
@@ -384,11 +427,16 @@
 	    // This board should update from Supabase only, not from another tab's local writes.
 	    $("closeQuickAddBtn").addEventListener("click", closeQuickAdd);
     $("quickAddBackdrop").addEventListener("click", closeQuickAdd);
-    $("quickAddBody").addEventListener("change", function(e){
-      var t = e.target;
-      if(!t || !t.id) return;
-      if(t.id === "quickAddRoomSelect"){
-        captureQuickAddDraft();
+	    $("quickAddBody").addEventListener("change", function(e){
+	      var t = e.target;
+	      if(t && t.getAttribute && t.getAttribute("data-quick-note-choice") === "1"){
+	        var dropdown = t.closest ? t.closest("#quickAddQuickNotes") : $("quickAddQuickNotes");
+	        if(typeof refreshQuickNoteDropdownSummary === "function") refreshQuickNoteDropdownSummary(dropdown);
+	        return;
+	      }
+	      if(!t || !t.id) return;
+	      if(t.id === "quickAddRoomSelect"){
+	        captureQuickAddDraft();
         renderQuickAddForm(t.value, false);
       }
     });
@@ -399,6 +447,57 @@
       var action = node.getAttribute("data-action");
       if(action === "toggleQuickAddRoomReady" || action === "toggleQuickAddDoctorReady"){
         node.classList.toggle("on");
+      } else if(action === "toggleQuickAddTimerAdjust"){
+        var roomSelect = $("quickAddRoomSelect");
+        var roomId = roomSelect ? roomSelect.value : "";
+        captureQuickAddDraft();
+        quickAddTimerAdjustOpen = !quickAddTimerAdjustOpen;
+        renderQuickAddForm(roomId, false);
+      } else if(action === "quickAddTimerDelta"){
+        var selectedRoom = $("quickAddRoomSelect");
+        var selectedRoomId = selectedRoom ? selectedRoom.value : "";
+        var currentRoom = findRoomById(selectedRoomId);
+        if(!currentRoom) return;
+        var currentDraft = readQuickAddFormDraft() || quickAddDraftState || getQuickAddDraftFromRoom(currentRoom);
+        var deltaMinutes = Number(node.getAttribute("data-delta-minutes") || 0);
+        setQuickAddTimerDraft(selectedRoomId, getQuickAddTimerDisplayMs(currentRoom, currentDraft) + (deltaMinutes * 60 * 1000), {
+          timerDirty: true,
+          timerInputValue: ""
+        });
+        quickAddTimerAdjustOpen = true;
+        renderQuickAddForm(selectedRoomId, false);
+      } else if(action === "applyQuickAddTimer"){
+        var activeRoomSelect = $("quickAddRoomSelect");
+        var activeRoomId = activeRoomSelect ? activeRoomSelect.value : "";
+        var activeRoom = findRoomById(activeRoomId);
+        if(!activeRoom) return;
+        var input = $("quickAddTimerInput");
+        var rawValue = String(input && input.value || "").trim();
+        var parsedMs = parseQuickAddTimerInputToMs(rawValue);
+        if(parsedMs == null){
+          setStatus("Use minutes like 12 or mm:ss like 12:30");
+          if(input){
+            input.focus();
+            input.select();
+          }
+          return;
+        }
+        setQuickAddTimerDraft(activeRoomId, parsedMs, {
+          timerDirty: true,
+          timerInputValue: rawValue
+        });
+        quickAddTimerAdjustOpen = true;
+        renderQuickAddForm(activeRoomId, false);
+      } else if(action === "resetQuickAddTimer"){
+        var resetRoomSelect = $("quickAddRoomSelect");
+        var resetRoomId = resetRoomSelect ? resetRoomSelect.value : "";
+        if(!findRoomById(resetRoomId)) return;
+        setQuickAddTimerDraft(resetRoomId, 0, {
+          timerDirty: true,
+          timerInputValue: ""
+        });
+        quickAddTimerAdjustOpen = true;
+        renderQuickAddForm(resetRoomId, false);
       } else if(action === "cancelQuickAdd"){
         closeQuickAdd();
       } else if(action === "saveQuickAdd"){
@@ -406,6 +505,14 @@
           return saveQuickAdd();
         }, { el: node, busyLabel: "Saving…", cooldownMs: 300 });
       }
+    });
+    $("quickAddBody").addEventListener("keydown", function(e){
+      var target = e.target;
+      if(!target || target.id !== "quickAddTimerInput") return;
+      if(e.key !== "Enter") return;
+      e.preventDefault();
+      var applyBtn = this.querySelector('[data-action="applyQuickAddTimer"]');
+      if(applyBtn) applyBtn.click();
     });
     document.addEventListener("keydown", function(e){
       if(e.key === "Escape" && /\bquickAddOpen\b/.test(document.body.className)){
@@ -436,14 +543,15 @@
 
       var displayScale = Number(state && state.settings ? (state.settings.displayCardScale || 1) : 1);
       var intakeScale = Number(state && state.settings ? (state.settings.intakeCardScale || 1) : 1);
-      if(isFs){
-        displayScale = Math.min(displayScale, 1);
-        intakeScale = Math.min(intakeScale, 1);
-      }
-      root.style.setProperty("--displayCardScaleApplied", String(displayScale));
-      root.style.setProperty("--intakeCardScaleApplied", String(intakeScale));
+	      if(isFs){
+	        displayScale = Math.min(displayScale, 1);
+	        intakeScale = Math.min(intakeScale, 1);
+	      }
+	      root.style.setProperty("--displayCardScaleApplied", String(displayScale));
+	      root.style.setProperty("--intakeCardScaleApplied", String(intakeScale));
+	      applyMobileQuickViewPreviewSettings(false);
 
-      var header = document.querySelector("header");
+	      var header = document.querySelector("header");
       var main = document.querySelector("main");
       var headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
       var mainStyles = main ? window.getComputedStyle(main) : null;
@@ -451,9 +559,26 @@
       var padBottom = mainStyles ? (parseFloat(mainStyles.paddingBottom) || 0) : 0;
       var viewportHeight = window.innerHeight || root.clientHeight || 0;
       var availableHeight = Math.max(240, viewportHeight - headerHeight - padTop - padBottom - 8);
-      root.style.setProperty("--appHeaderHeight", headerHeight + "px");
-      root.style.setProperty("--fullscreenDisplayHeight", availableHeight + "px");
-    }
+	      root.style.setProperty("--appHeaderHeight", headerHeight + "px");
+	      root.style.setProperty("--fullscreenDisplayHeight", availableHeight + "px");
+	    }
+
+	    function applyMobileQuickViewPreviewSettings(preferInputs){
+	      var root = document.documentElement;
+	      var settingsState = state && state.settings ? state.settings : {};
+	      var fontSize = preferInputs && $("mobileQuickViewFontSize") && isFinite(Number($("mobileQuickViewFontSize").value))
+	        ? Number($("mobileQuickViewFontSize").value)
+	        : Number(settingsState.mobileQuickViewFontSize || 22);
+	      var timerSize = preferInputs && $("mobileQuickViewTimerSize") && isFinite(Number($("mobileQuickViewTimerSize").value))
+	        ? Number($("mobileQuickViewTimerSize").value)
+	        : Number(settingsState.mobileQuickViewTimerSize || 13);
+	      var gapSize = preferInputs && $("mobileQuickViewGap") && isFinite(Number($("mobileQuickViewGap").value))
+	        ? Number($("mobileQuickViewGap").value)
+	        : Number(settingsState.mobileQuickViewGap || 8);
+	      root.style.setProperty("--mobileQuickViewFontSize", String(Math.max(12, Math.min(32, fontSize))) + "px");
+	      root.style.setProperty("--mobileQuickViewTimerSize", String(Math.max(10, Math.min(20, timerSize))) + "px");
+	      root.style.setProperty("--mobileQuickViewGap", String(Math.max(4, Math.min(16, gapSize))) + "px");
+	    }
 
     function toggleFullscreen(){
       var doc = document;
@@ -480,6 +605,20 @@
     $("fullscreenBtn").addEventListener("click", toggleFullscreen);
 
     $("viewToggleBtn").addEventListener("click", function(){
+      if(state.settings.mobileQuickView && window.matchMedia && window.matchMedia("(max-width: 820px)").matches){
+        state.settings.mobileQuickView = false;
+        persistWindowUiSettings();
+        scheduleUiRefresh({
+          globalChrome: true,
+          displayChrome: true,
+          display: true,
+          displayFull: true,
+          settingsLists: true,
+          timerBindings: true
+        });
+        setStatus("Mobile quick view disabled");
+        return;
+      }
       state.settings.displayLayout = (state.settings.displayLayout === "list") ? "grid" : "list";
       persistWindowUiSettings();
       scheduleUiRefresh({
@@ -491,19 +630,60 @@
       });
       setStatus("Display view updated");
     });
+    if($("toggleMobileQuickViewBtn")){
+      $("toggleMobileQuickViewBtn").addEventListener("click", function(){
+        var btn = this;
+        runLockedAction("settings.toggle-mobile-quick-view", function(){
+          if(!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches)){
+            setStatus("Quick view only changes the mobile display.");
+            return false;
+          }
+          state.settings.mobileQuickView = !state.settings.mobileQuickView;
+          persistWindowUiSettings();
+          scheduleUiRefresh({
+            globalChrome: true,
+            displayChrome: true,
+            display: true,
+            displayFull: true,
+            settingsLists: true,
+            timerBindings: true
+          });
+          setStatus(state.settings.mobileQuickView ? "Mobile quick view enabled" : "Mobile quick view disabled");
+          return true;
+        }, { el: btn, cooldownMs: 180 });
+      });
+    }
     document.addEventListener("fullscreenchange", function(){ updateFullscreenBtn(); updateViewportFit(); });
     document.addEventListener("webkitfullscreenchange", function(){ updateFullscreenBtn(); updateViewportFit(); });
     window.addEventListener("resize", updateViewportFit);
+    var lastMobileQuickViewViewport = !!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches);
+    window.addEventListener("resize", function(){
+      var nextMobileQuickViewViewport = !!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches);
+      if(nextMobileQuickViewViewport === lastMobileQuickViewViewport) return;
+      lastMobileQuickViewViewport = nextMobileQuickViewViewport;
+      scheduleUiRefresh({
+        globalChrome: true,
+        displayChrome: true,
+        display: true,
+        displayFull: true,
+        settingsLists: true,
+        timerBindings: true
+      });
+    });
 
     // ===== Settings actions =====
     function queueSettingsConfigSave(options){
       options = options || {};
       normalizeSettingsForSave(state);
       saveLocal();
-      scheduleUiRefresh({ settingsLists: true });
-      var blockingIssues = getBlockingSettingsIssues(state);
+      if(options.renderSettingsLists !== false) scheduleUiRefresh({ settingsLists: true });
+      var shouldValidateClinicConfig = true;
+      if(typeof getPracticeConfigSignature === "function" && lastPracticeConfigSignature){
+        shouldValidateClinicConfig = getPracticeConfigSignature() !== lastPracticeConfigSignature;
+      }
+      var blockingIssues = shouldValidateClinicConfig ? getBlockingSettingsIssues(state) : [];
       if(blockingIssues.length){
-        noteSettingsRemoteFinished(false, "Fix settings first");
+        noteSettingsRemoteFinished(false, describeSettingsIssuesForSaveState(blockingIssues, "Fix settings first"));
         setStatus(describeSettingsIssuesForStatus(blockingIssues));
         return;
       }
@@ -512,7 +692,7 @@
         return;
       }
       noteSettingsRemoteQueued("Saving changes…");
-      scheduleRemoteSave("config", { immediate: !!options.immediate });
+      scheduleRemoteSave(shouldValidateClinicConfig ? "config" : "userSettings", { immediate: !!options.immediate });
     }
 
     function queueAppointmentTypesSave(options){
@@ -520,9 +700,9 @@
       normalizeSettingsForSave(state);
       saveLocal();
       scheduleUiRefresh({ settingsLists: true });
-      var blockingIssues = getBlockingSettingsIssues(state);
+      var blockingIssues = getBlockingAppointmentTypeSettingsIssues(state);
       if(blockingIssues.length){
-        noteSettingsRemoteFinished(false, "Fix label settings first");
+        noteSettingsRemoteFinished(false, describeSettingsIssuesForSaveState(blockingIssues, "Fix label settings first"));
         setStatus(describeSettingsIssuesForStatus(blockingIssues));
         return;
       }
@@ -533,6 +713,74 @@
       noteSettingsRemoteQueued("Saving changes…");
       scheduleRemoteSave("appointmentTypes", { immediate: !!options.immediate });
     }
+
+    function getManagedQuickNotes(){
+      var notes = [];
+      var seen = Object.create(null);
+      var source = Array.isArray(state.quickNotes) ? state.quickNotes : [];
+      for(var i=0;i<source.length;i++){
+        var label = String(source[i] == null ? "" : source[i]).trim();
+        if(!label) continue;
+        var key = label.toLowerCase();
+        if(seen[key]) continue;
+        seen[key] = true;
+        notes.push(label);
+      }
+      return notes;
+    }
+
+    function setManagedQuickNotes(notes){
+      var next = [""];
+      var seen = Object.create(null);
+      var source = Array.isArray(notes) ? notes : [];
+      for(var i=0;i<source.length;i++){
+        var label = String(source[i] == null ? "" : source[i]).trim();
+        if(!label) continue;
+        var key = label.toLowerCase();
+        if(seen[key]) continue;
+        seen[key] = true;
+        next.push(label);
+      }
+      state.quickNotes = next;
+      saveLocal();
+      return next;
+    }
+
+	    function getRoomIdsUsingQuickNote(label){
+	      var target = String(label == null ? "" : label).trim().toLowerCase();
+	      if(!target) return [];
+	      return getRoomIdsMatching(function(room){
+	        var notes = getRoomQuickNotes(room);
+	        for(var i=0;i<notes.length;i++){
+	          if(String(notes[i] || "").trim().toLowerCase() === target) return true;
+	        }
+	        return false;
+	      });
+	    }
+
+    function renameQuickNoteAcrossRooms(previousLabel, nextLabel){
+      var target = String(previousLabel == null ? "" : previousLabel).trim().toLowerCase();
+      var replacement = String(nextLabel == null ? "" : nextLabel).trim();
+	      var affected = [];
+	      if(!target) return affected;
+	      for(var i=0;i<state.rooms.length;i++){
+	        var notes = getRoomQuickNotes(state.rooms[i]);
+	        var nextNotes = [];
+	        var changed = false;
+	        for(var n=0;n<notes.length;n++){
+	          if(String(notes[n] || "").trim().toLowerCase() === target){
+	            changed = true;
+	            if(replacement) nextNotes.push(replacement);
+	          } else {
+	            nextNotes.push(notes[n]);
+	          }
+	        }
+	        if(!changed) continue;
+	        setRoomQuickNotes(state.rooms[i], nextNotes);
+	        affected.push(state.rooms[i].id);
+	      }
+	      return affected;
+	    }
 
 	    $("addRoomBtn").addEventListener("click", function(){
 	      var btn = this;
@@ -600,6 +848,45 @@
       }, { el: btn, busyLabel: "Adding…", cooldownMs: 250 });
     });
 
+    function addQuickNoteFromSettings(){
+      var field = $("newQuickNoteLabel");
+      var nextLabel = String(field && field.value || "").trim();
+      if(!nextLabel){
+        setStatus("Enter a quick note first.");
+        return false;
+      }
+      var existing = getManagedQuickNotes();
+      for(var i=0;i<existing.length;i++){
+        if(existing[i].toLowerCase() === nextLabel.toLowerCase()){
+          setStatus("That quick note already exists.");
+          return false;
+        }
+      }
+      existing.push(nextLabel);
+      setManagedQuickNotes(existing);
+      if(field) field.value = "";
+      queueSettingsConfigSave({ immediate: true });
+      scheduleUiRefresh({ settingsLists: true });
+      setStatus("Quick note saved.");
+      return true;
+    }
+
+    if($("addQuickNoteBtn")){
+      $("addQuickNoteBtn").addEventListener("click", function(){
+        var btn = this;
+        runLockedAction("settings.add-quick-note", function(){
+          return addQuickNoteFromSettings();
+        }, { el: btn, busyLabel: "Adding…", cooldownMs: 250 });
+      });
+    }
+    if($("newQuickNoteLabel")){
+      $("newQuickNoteLabel").addEventListener("keydown", function(e){
+        if(e.key !== "Enter") return;
+        e.preventDefault();
+        addQuickNoteFromSettings();
+      });
+    }
+
     if($("defaultColorLabelSelect")){
       $("defaultColorLabelSelect").addEventListener("change", function(){
         state.settings.defaultColorLabelId = getConfiguredDefaultColorLabelId(state.colorLabels, this.value);
@@ -607,27 +894,42 @@
       });
     }
 
-    function bindScaleInputs(rangeId, valueId){
+    function bindScaleInputs(rangeId, valueId, minValue, maxValue){
       var range = $(rangeId);
       var value = $(valueId);
       if(!range || !value) return;
+      var min = isFinite(Number(minValue)) ? Number(minValue) : Number(range.min || 0);
+      var max = isFinite(Number(maxValue)) ? Number(maxValue) : Number(range.max || 100);
       range.addEventListener("input", function(){
         value.value = String(range.value);
       });
       value.addEventListener("input", function(){
         var v = Number(value.value);
         if(!isFinite(v)) return;
-        v = Math.max(0.8, Math.min(1.6, v));
+        v = Math.max(min, Math.min(max, v));
         range.value = String(v);
       });
     }
-    bindScaleInputs("displayCardScale", "displayCardScaleValue");
+	    bindScaleInputs("displayCardScale", "displayCardScaleValue", 0.8, 1.6);
+	    bindScaleInputs("roomCardLineHeight", "roomCardLineHeightValue", 1, 1.8);
+	    bindScaleInputs("practiceLogoScale", "practiceLogoScaleValue", 0.6, 5);
+	    bindScaleInputs("doctorInitialBadgeScale", "doctorInitialBadgeScaleValue", 0.7, 2);
+	    bindScaleInputs("doctorInitialBadgeFontSize", "doctorInitialBadgeFontSizeValue", 10, 28);
+	    bindScaleInputs("mobileQuickViewFontSize", "mobileQuickViewFontSizeValue", 12, 32);
+	    bindScaleInputs("mobileQuickViewTimerSize", "mobileQuickViewTimerSizeValue", 10, 20);
 
-    function layoutInputsReady(){
-      return String(($("displayCols") && $("displayCols").value) || "").trim() !== ""
-        && String(($("displayRows") && $("displayRows").value) || "").trim() !== ""
-        && isFinite(Number(($("displayCardScale") && $("displayCardScale").value) || 1));
-    }
+	    function layoutInputsReady(){
+	      return String(($("displayCols") && $("displayCols").value) || "").trim() !== ""
+	        && String(($("displayRows") && $("displayRows").value) || "").trim() !== ""
+	        && isFinite(Number(($("displayCardScale") && $("displayCardScale").value) || 1));
+	    }
+
+	    function mobileQuickViewInputsReady(){
+	      return String(($("mobileQuickViewColumns") && $("mobileQuickViewColumns").value) || "").trim() !== ""
+	        && String(($("mobileQuickViewGap") && $("mobileQuickViewGap").value) || "").trim() !== ""
+	        && isFinite(Number(($("mobileQuickViewFontSize") && $("mobileQuickViewFontSize").value) || 22))
+	        && isFinite(Number(($("mobileQuickViewTimerSize") && $("mobileQuickViewTimerSize").value) || 13));
+	    }
 
     function timerAlertInputsReady(){
       return String(($("timerAlert1AtSec") && $("timerAlert1AtSec").value) || "").trim() !== ""
@@ -642,9 +944,20 @@
         && String(($("fontDisplay") && $("fontDisplay").value) || "").trim() !== "";
     }
 
-    function commitLayoutSettings(options){
-      options = options || {};
-      if(!options.force && !layoutInputsReady()) return false;
+    var ROOM_CARD_FIELD_SETTING_IDS = [
+      "showRoomCardPatient",
+      "showRoomCardType",
+      "showRoomCardDoctorName",
+      "showRoomCardDoctorBadge",
+      "showRoomCardTech",
+      "showRoomCardReady",
+      "showRoomCardQuickNote",
+      "showRoomCardStatusNotes"
+    ];
+
+	    function commitLayoutSettings(options){
+	      options = options || {};
+	      if(!options.force && !layoutInputsReady()) return false;
       state.settings.displayCols = Math.max(1, Number($("displayCols").value || 4));
       state.settings.displayRows = Math.max(0, Number($("displayRows").value || 0));
       state.settings.displayCardScale = Math.max(0.8, Math.min(1.6, Number($("displayCardScale").value || 1)));
@@ -657,9 +970,32 @@
         timerBindings: true
       });
       if(options.flush) flushPendingSettingsSaves();
-      if(options.announce) setStatus("Layout saved");
-      return true;
-    }
+	      if(options.announce) setStatus("Layout saved");
+	      return true;
+	    }
+
+	    function commitMobileQuickViewSettings(options){
+	      options = options || {};
+	      if(!options.force && !mobileQuickViewInputsReady()) return false;
+	      state.settings.mobileQuickViewColumns = Math.max(2, Math.min(5, Number($("mobileQuickViewColumns").value || 4)));
+	      state.settings.mobileQuickViewGap = Math.max(4, Math.min(16, Number($("mobileQuickViewGap").value || 8)));
+	      state.settings.mobileQuickViewFontSize = Math.max(12, Math.min(32, Number($("mobileQuickViewFontSize").value || 22)));
+	      state.settings.mobileQuickViewTimerSize = Math.max(10, Math.min(20, Number($("mobileQuickViewTimerSize").value || 13)));
+	      persistWindowUiSettings();
+	      applyMobileQuickViewPreviewSettings(false);
+	      updateViewportFit();
+	      scheduleUiRefresh({
+	        globalChrome: true,
+	        displayChrome: true,
+	        display: true,
+	        displayFull: true,
+	        settingsLists: true,
+	        timerBindings: true
+	      });
+	      if(options.flush) flushPendingSettingsSaves();
+	      if(options.announce) setStatus("Mobile quick view saved");
+	      return true;
+	    }
 
     function commitTimerAlertSettings(options){
       options = options || {};
@@ -725,6 +1061,150 @@
       return true;
     }
 
+    function commitRoomCardFieldSettings(options){
+      options = options || {};
+	      for(var i=0;i<ROOM_CARD_FIELD_SETTING_IDS.length;i++){
+	        var id = ROOM_CARD_FIELD_SETTING_IDS[i];
+	        var input = $(id);
+	        if(input) state.settings[id] = !!input.checked;
+	      }
+	      if($("roomCardLineHeight")) state.settings.roomCardLineHeight = Math.max(1, Math.min(1.8, Number($("roomCardLineHeight").value || 1.35)));
+	      normalizeSettingsForSave(state);
+	      saveLocal();
+	      if(!supabase || !currentPracticeId){
+	        noteSettingsLocalSaved("Saved locally");
+	      } else {
+	        noteSettingsRemoteQueued("Saving room card fields…");
+	        scheduleRemoteSave("board", { immediate: !!options.flush });
+	      }
+	      scheduleUiRefresh({
+	        globalChrome: true,
+	        display: true,
+	        displayFull: true,
+        timerBindings: true
+      });
+      if(options.flush) flushPendingSettingsSaves();
+      if(options.announce) setStatus("Room card fields saved");
+      return true;
+    }
+
+	    function commitPracticeBrandingSettings(options){
+	      options = options || {};
+      if($("practiceNameColor")) state.settings.practiceNameColor = $("practiceNameColor").value || "#fecdd3";
+      if($("showPracticeNameBadge")) state.settings.showPracticeNameBadge = !!$("showPracticeNameBadge").checked;
+      if($("practiceLogoInvert")) state.settings.practiceLogoInvert = !!$("practiceLogoInvert").checked;
+      if($("practiceLogoScale")) state.settings.practiceLogoScale = Math.max(0.6, Math.min(5, Number($("practiceLogoScale").value || 1)));
+      normalizeSettingsForSave(state);
+      queueSettingsConfigSave({ immediate: !!options.flush });
+      scheduleUiRefresh({
+        globalChrome: true
+      });
+      if(options.flush) flushPendingSettingsSaves();
+	      if(options.announce) setStatus("Header branding saved");
+	      return true;
+	    }
+
+	    function commitDoctorInitialBadgeSettings(options){
+	      options = options || {};
+	      if($("doctorInitialBadgeScale")) state.settings.doctorInitialBadgeScale = Math.max(0.7, Math.min(2, Number($("doctorInitialBadgeScale").value || 1)));
+	      if($("doctorInitialBadgeFontSize")) state.settings.doctorInitialBadgeFontSize = Math.max(10, Math.min(28, Number($("doctorInitialBadgeFontSize").value || 16)));
+	      normalizeSettingsForSave(state);
+	      saveLocal();
+	      if(!supabase || !currentPracticeId){
+	        noteSettingsLocalSaved("Saved locally");
+	      } else {
+	        doctorBadgeSettingsDirty = true;
+	        noteSettingsRemoteQueued("Saving doctor badges…");
+	        scheduleRemoteSave("board", { immediate: !!options.flush });
+	      }
+	      scheduleUiRefresh({
+	        globalChrome: true,
+	        display: true,
+	        displayFull: true,
+	        settingsLists: true
+	      });
+	      if(options.flush) flushPendingSettingsSaves();
+	      if(options.announce) setStatus("Doctor badge style saved");
+	      return true;
+	    }
+
+    var PRACTICE_LOGO_BUCKET = "practice-logos";
+
+    function inferPracticeLogoExtension(file){
+      var type = String(file && file.type || "").toLowerCase();
+      if(type === "image/svg+xml") return "svg";
+      if(type === "image/png") return "png";
+      if(type === "image/webp") return "webp";
+      if(type === "image/jpeg") return "jpg";
+      var name = String(file && file.name || "").toLowerCase();
+      if(/\.svg$/i.test(name)) return "svg";
+      if(/\.webp$/i.test(name)) return "webp";
+      if(/\.jpe?g$/i.test(name)) return "jpg";
+      return "png";
+    }
+
+    async function uploadPracticeLogoSelection(){
+      var input = $("practiceLogoFile");
+      var file = input && input.files ? input.files[0] : null;
+      if(!supabase || !currentPracticeId) throw new Error("Log into a clinic before uploading a logo.");
+      if(!file) throw new Error("Choose a logo image first.");
+      if(String(file.type || "").toLowerCase().indexOf("image/") !== 0) throw new Error("Choose an image file for the clinic logo.");
+      if(Number(file.size || 0) > 2 * 1024 * 1024) throw new Error("Clinic logo must be 2 MB or smaller.");
+      var ext = inferPracticeLogoExtension(file);
+      var previousPath = String(state && state.settings ? (state.settings.practiceLogoPath || "") : "").trim();
+      var objectPath = String(currentPracticeId) + "/logo-" + Date.now() + "." + ext;
+      var uploadRes = await supabase.storage.from(PRACTICE_LOGO_BUCKET).upload(objectPath, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type || undefined
+      });
+      if(uploadRes.error) throw uploadRes.error;
+      var publicUrlData = supabase.storage.from(PRACTICE_LOGO_BUCKET).getPublicUrl(objectPath);
+      var publicUrl = publicUrlData && publicUrlData.data ? String(publicUrlData.data.publicUrl || "").trim() : "";
+      if(!publicUrl) throw new Error("Logo uploaded, but no public URL was returned.");
+
+      state.settings.practiceLogoPath = objectPath;
+      state.settings.practiceLogoUrl = publicUrl;
+      state.settings.practiceLogoUpdatedAt = new Date().toISOString();
+      normalizeSettingsForSave(state);
+      queueSettingsConfigSave({ immediate: true });
+      scheduleUiRefresh({
+        globalChrome: true,
+        settingsLists: true
+      });
+      flushPendingSettingsSaves();
+      if(input) input.value = "";
+
+      if(previousPath && previousPath !== objectPath){
+        try{
+          await supabase.storage.from(PRACTICE_LOGO_BUCKET).remove([previousPath]);
+        }catch(e){}
+      }
+      return true;
+    }
+
+    async function removePracticeLogoSelection(){
+      var input = $("practiceLogoFile");
+      var previousPath = String(state && state.settings ? (state.settings.practiceLogoPath || "") : "").trim();
+      state.settings.practiceLogoPath = "";
+      state.settings.practiceLogoUrl = "";
+      state.settings.practiceLogoUpdatedAt = "";
+      normalizeSettingsForSave(state);
+      queueSettingsConfigSave({ immediate: true });
+      scheduleUiRefresh({
+        globalChrome: true,
+        settingsLists: true
+      });
+      flushPendingSettingsSaves();
+      if(input) input.value = "";
+      if(supabase && previousPath){
+        try{
+          await supabase.storage.from(PRACTICE_LOGO_BUCKET).remove([previousPath]);
+        }catch(e){}
+      }
+      return true;
+    }
+
     function scheduleLayoutAutosave(force, delayMs){
       scheduleSettingsAutosave("layout", function(){
         return commitLayoutSettings({ force: force });
@@ -743,13 +1223,37 @@
       }, delayMs);
     }
 
-    function scheduleDisplayColorAutosave(delayMs){
-      scheduleSettingsAutosave("display-colors", function(){
-        return commitDisplayColorSettings();
-      }, delayMs);
-    }
+	    function scheduleDisplayColorAutosave(delayMs){
+	      scheduleSettingsAutosave("display-colors", function(){
+	        return commitDisplayColorSettings();
+	      }, delayMs);
+	    }
 
-    ["displayCols", "displayRows", "displayCardScale"].forEach(function(id){
+	    function scheduleRoomCardFieldAutosave(delayMs){
+	      scheduleSettingsAutosave("room-card-fields", function(){
+	        return commitRoomCardFieldSettings();
+	      }, delayMs);
+	    }
+
+	    function scheduleMobileQuickViewAutosave(force, delayMs){
+	      scheduleSettingsAutosave("mobile-quick-view", function(){
+	        return commitMobileQuickViewSettings({ force: force });
+	      }, delayMs);
+	    }
+
+	    function schedulePracticeBrandingAutosave(delayMs){
+	      scheduleSettingsAutosave("practice-branding", function(){
+	        return commitPracticeBrandingSettings();
+	      }, delayMs);
+	    }
+
+	    function scheduleDoctorInitialBadgeAutosave(delayMs){
+	      scheduleSettingsAutosave("doctor-initial-badge", function(){
+	        return commitDoctorInitialBadgeSettings();
+	      }, delayMs);
+	    }
+
+	    ["displayCols", "displayRows", "displayCardScale"].forEach(function(id){
       var el = $(id);
       if(!el) return;
       el.addEventListener("input", function(){
@@ -760,7 +1264,7 @@
         scheduleLayoutAutosave(true, 0);
       });
     });
-    if($("displayCardScaleValue")){
+	    if($("displayCardScaleValue")){
       $("displayCardScaleValue").addEventListener("input", function(){
         if(!isFinite(Number(this.value))) return;
         scheduleLayoutAutosave(false, 260);
@@ -826,8 +1330,111 @@
         scheduleDisplayColorAutosave(0);
       });
     }
+    ROOM_CARD_FIELD_SETTING_IDS.forEach(function(id){
+      var el = $(id);
+      if(!el) return;
+      el.addEventListener("change", function(){
+        scheduleRoomCardFieldAutosave(0);
+      });
+    });
+    ["roomCardLineHeight", "roomCardLineHeightValue"].forEach(function(id){
+      var el = $(id);
+      if(!el) return;
+      el.addEventListener("input", function(){
+        if(String(this.value || "").trim() === "") return;
+        scheduleRoomCardFieldAutosave(160);
+      });
+      el.addEventListener("change", function(){
+        scheduleRoomCardFieldAutosave(0);
+      });
+    });
+    if($("practiceNameColor")){
+      $("practiceNameColor").addEventListener("input", function(){
+        schedulePracticeBrandingAutosave(160);
+      });
+      $("practiceNameColor").addEventListener("change", function(){
+        schedulePracticeBrandingAutosave(0);
+      });
+    }
+    ["practiceLogoScale", "practiceLogoScaleValue"].forEach(function(id){
+      var el = $(id);
+      if(!el) return;
+      el.addEventListener("input", function(){
+        if(String(this.value || "").trim() === "") return;
+        schedulePracticeBrandingAutosave(160);
+      });
+      el.addEventListener("change", function(){
+        schedulePracticeBrandingAutosave(0);
+      });
+    });
+	    if($("showPracticeNameBadge")){
+	      $("showPracticeNameBadge").addEventListener("change", function(){
+	        schedulePracticeBrandingAutosave(0);
+	      });
+	    }
+	    if($("practiceLogoInvert")){
+	      $("practiceLogoInvert").addEventListener("change", function(){
+	        schedulePracticeBrandingAutosave(0);
+	      });
+	    }
+	    ["mobileQuickViewColumns", "mobileQuickViewGap", "mobileQuickViewFontSize", "mobileQuickViewTimerSize"].forEach(function(id){
+	      var el = $(id);
+	      if(!el) return;
+	      el.addEventListener("input", function(){
+	        if(String(this.value || "").trim() === "") return;
+	        applyMobileQuickViewPreviewSettings(true);
+	        scheduleMobileQuickViewAutosave(false, 220);
+	      });
+	      el.addEventListener("change", function(){
+	        applyMobileQuickViewPreviewSettings(true);
+	        scheduleMobileQuickViewAutosave(true, 0);
+	      });
+	    });
+	    ["mobileQuickViewFontSizeValue", "mobileQuickViewTimerSizeValue"].forEach(function(id){
+	      var el = $(id);
+	      if(!el) return;
+	      el.addEventListener("input", function(){
+	        if(!isFinite(Number(this.value))) return;
+	        applyMobileQuickViewPreviewSettings(true);
+	        scheduleMobileQuickViewAutosave(false, 220);
+	      });
+	      el.addEventListener("change", function(){
+	        applyMobileQuickViewPreviewSettings(true);
+	        scheduleMobileQuickViewAutosave(true, 0);
+	      });
+	    });
+	    ["doctorInitialBadgeScale", "doctorInitialBadgeScaleValue"].forEach(function(id){
+	      var el = $(id);
+	      if(!el) return;
+	      el.addEventListener("input", function(){
+	        if(String(this.value || "").trim() === "") return;
+	        scheduleDoctorInitialBadgeAutosave(160);
+	      });
+	      el.addEventListener("change", function(){
+	        scheduleDoctorInitialBadgeAutosave(0);
+	      });
+	    });
+	    ["doctorInitialBadgeFontSize", "doctorInitialBadgeFontSizeValue"].forEach(function(id){
+	      var el = $(id);
+	      if(!el) return;
+	      el.addEventListener("input", function(){
+	        if(String(this.value || "").trim() === "") return;
+	        scheduleDoctorInitialBadgeAutosave(160);
+	      });
+	      el.addEventListener("change", function(){
+	        scheduleDoctorInitialBadgeAutosave(0);
+	      });
+	    });
+	    if($("practiceLogoFile") && $("practiceLogoHelp")){
+      $("practiceLogoFile").addEventListener("change", function(){
+        var file = this.files && this.files[0];
+        $("practiceLogoHelp").textContent = file
+          ? ("Ready to upload: " + file.name)
+          : "Uploads replace the RoomBoard wordmark with your clinic logo for the whole clinic.";
+      });
+    }
 
-    $("applyLayoutBtn").addEventListener("click", function(){
+	    $("applyLayoutBtn").addEventListener("click", function(){
       var btn = this;
       runLockedAction("settings.apply-layout", function(){
         return commitLayoutSettings({ force: true, flush: true, announce: true });
@@ -840,6 +1447,14 @@
 	        return commitTimerAlertSettings({ force: true, flush: true, announce: true });
         }, { el: btn, busyLabel: "Saving…", cooldownMs: 250 });
 	    });
+	    if($("applyMobileQuickViewBtn")){
+	      $("applyMobileQuickViewBtn").addEventListener("click", function(){
+	        var btn = this;
+	        runLockedAction("settings.apply-mobile-quick-view", function(){
+	          return commitMobileQuickViewSettings({ force: true, flush: true, announce: true });
+	        }, { el: btn, busyLabel: "Saving…", cooldownMs: 250 });
+	      });
+	    }
 
 	    $("applyFontsBtn").addEventListener("click", function(){
         var btn = this;
@@ -854,6 +1469,44 @@
         return commitDisplayColorSettings({ flush: true, announce: true });
       }, { el: btn, busyLabel: "Saving…", cooldownMs: 250 });
     });
+    if($("applyPracticeNameColorBtn")){
+      $("applyPracticeNameColorBtn").addEventListener("click", function(){
+        var btn = this;
+        runLockedAction("settings.apply-practice-name-color", function(){
+          return commitPracticeBrandingSettings({ flush: true, announce: true });
+        }, { el: btn, busyLabel: "Saving…", cooldownMs: 250 });
+      });
+    }
+    if($("uploadPracticeLogoBtn")){
+      $("uploadPracticeLogoBtn").addEventListener("click", function(){
+        var btn = this;
+        runLockedAction("settings.upload-practice-logo", async function(){
+          try{
+            await uploadPracticeLogoSelection();
+            setStatus("Clinic logo uploaded.");
+            return true;
+          }catch(e){
+            setStatus("Logo upload failed: " + getErrorMessage(e));
+            return false;
+          }
+        }, { el: btn, busyLabel: "Uploading…", cooldownMs: 250 });
+      });
+    }
+    if($("removePracticeLogoBtn")){
+      $("removePracticeLogoBtn").addEventListener("click", function(){
+        var btn = this;
+        runLockedAction("settings.remove-practice-logo", async function(){
+          try{
+            await removePracticeLogoSelection();
+            setStatus("Clinic logo removed.");
+            return true;
+          }catch(e){
+            setStatus("Removing logo failed: " + getErrorMessage(e));
+            return false;
+          }
+        }, { el: btn, busyLabel: "Removing…", cooldownMs: 250 });
+      });
+    }
 
     if($("savePracticeDefaultsBtn")){
       $("savePracticeDefaultsBtn").addEventListener("click", async function(){
@@ -868,12 +1521,6 @@
           normalizeSettingsForSave(state);
           saveLocal();
           scheduleUiRefresh({ settingsLists: true });
-          var blockingIssues = getBlockingSettingsIssues(state);
-          if(blockingIssues.length){
-            noteSettingsRemoteFinished(false, "Fix settings first");
-            setStatus(describeSettingsIssuesForStatus(blockingIssues));
-            return false;
-          }
           noteSettingsRemoteQueued("Saving defaults…");
           await savePracticeDefaultSettingsRecord(capturePersistentSettingsSnapshot(true));
           noteSettingsRemoteFinished(true, "Defaults saved");

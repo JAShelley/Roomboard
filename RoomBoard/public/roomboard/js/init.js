@@ -6,45 +6,47 @@
     try{ setSyncUI("err", "Startup failed"); }catch(_){}
   }
 
-  function clearStartupStateCaches(){
-    var keys = [
-      "roomboard.website.state.v1.guest",
-      "roomboard.website.accountSettings.v1.guest",
-      "roomboard.website.windowSettings.v1.guest",
-      "roomboard.website.themePrefs.v1.guest"
-    ];
-    for(var i=0;i<keys.length;i++){
-      try{ localStorage.removeItem(keys[i]); }catch(_){}
-      try{ sessionStorage.removeItem(keys[i]); }catch(_){}
-    }
+  function buildStartupRecoveryState(){
+    var recovered = ensureStateShape(null);
+    normalizeSettingsForSave(recovered);
+    applyAccountSettingsToState(recovered);
+    applySessionUiPrefs(recovered);
+    return recovered;
   }
 
   function boot(recoveryAttempted){
+    var bootScope = "guest";
     try{
-      state = ensureStateShape(loadLocal() || null);
+      bootScope = (typeof getBootPersistenceScope === "function") ? getBootPersistenceScope() : "guest";
+      var restoringClinicSnapshot = !!(bootScope && bootScope !== "guest");
+      state = ensureStateShape(loadLocal(bootScope) || null);
       normalizeSettingsForSave(state);
       applyAccountSettingsToState(state);
       applySessionUiPrefs(state);
+      if(typeof getPracticeConfigSignature === "function") lastPracticeConfigSignature = getPracticeConfigSignature();
+      if(typeof getAppointmentTypesConfigSignature === "function") lastAppointmentTypesSignature = getAppointmentTypesConfigSignature();
+      if(typeof getRoomBoardSignature === "function") lastRoomBoardSignature = getRoomBoardSignature();
       initSettingsTabs();
       refreshUiFromState({ applyTheme: true, renderSettingsLists: true });
       refreshKnownRoomIds(state.rooms);
-      setStatus("Ready");
-      setSyncUI("idle", "Guest");
+      setStatus(restoringClinicSnapshot ? "Restoring clinic snapshot..." : "Ready");
+      setSyncUI(restoringClinicSnapshot ? "syncing" : "idle", restoringClinicSnapshot ? "Restoring clinic" : "Guest");
       startAutoPull();
       initSupabase();
     }catch(err){
       if(!recoveryAttempted){
-        clearStartupStateCaches();
         try{
-          state = ensureStateShape(null);
-          normalizeSettingsForSave(state);
-          applyAccountSettingsToState(state);
-          applySessionUiPrefs(state);
+          var recoveryBootScope = bootScope || ((typeof getBootPersistenceScope === "function") ? getBootPersistenceScope() : "guest");
+          var recoveringClinicSnapshot = !!(recoveryBootScope && recoveryBootScope !== "guest");
+          state = buildStartupRecoveryState();
+          if(typeof getPracticeConfigSignature === "function") lastPracticeConfigSignature = getPracticeConfigSignature();
+          if(typeof getAppointmentTypesConfigSignature === "function") lastAppointmentTypesSignature = getAppointmentTypesConfigSignature();
+          if(typeof getRoomBoardSignature === "function") lastRoomBoardSignature = getRoomBoardSignature();
           initSettingsTabs();
           refreshUiFromState({ applyTheme: true, renderSettingsLists: true });
           refreshKnownRoomIds(state.rooms);
-          setStatus("Ready");
-          setSyncUI("idle", "Guest");
+          setStatus(recoveringClinicSnapshot ? "Recovering clinic view..." : "Ready");
+          setSyncUI(recoveringClinicSnapshot ? "syncing" : "idle", recoveringClinicSnapshot ? "Recovering clinic" : "Guest");
           startAutoPull();
           initSupabase();
           return;

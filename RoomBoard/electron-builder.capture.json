@@ -1,0 +1,50 @@
+{
+  "appId": "com.roomboard.capture",
+  "artifactName": "RoomBoard-Capture-Setup-Windows-x64.${ext}",
+  "directories": {
+    "buildResources": "build",
+    "output": "dist-capture"
+  },
+  "productName": "RoomBoard Capture",
+  "asar": true,
+  "extraMetadata": {
+    "main": "desktop/capture-main.cjs",
+    "name": "roomboard-capture",
+    "description": "Windows appointment capture app for sending scheduler appointments into RoomBoard."
+  },
+  "files": [
+    "desktop/capture-main.cjs",
+    "desktop/capture-preload.cjs",
+    "desktop/capture-ui.html",
+    "desktop/capture-ui.css",
+    "desktop/capture-ui.js",
+    "desktop/capture-overlay.html",
+    "desktop/capture-overlay.js",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "desktop/capture-helper/bin/Release/net8.0-windows/win-x64/publish",
+      "to": "capture-helper-windows",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "allowToChangeInstallationDirectory": true,
+    "oneClick": false,
+    "perMachine": false
+  }
+}

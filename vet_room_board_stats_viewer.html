@@ -29,6 +29,7 @@
     min-height:100vh;
     font-family:"Avenir Next","Segoe UI",sans-serif;
     color:var(--text);
+    overflow-x:hidden;
     background:
       radial-gradient(circle at top left, rgba(56,189,248,.18), transparent 28%),
       radial-gradient(circle at top right, rgba(94,234,212,.10), transparent 22%),
@@ -120,7 +121,7 @@
   .loginGrid,
   .controls{
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns:repeat(auto-fit, minmax(min(220px, 100%), 1fr));
     gap:14px;
     align-items:end;
   }
@@ -128,6 +129,7 @@
     display:flex;
     flex-direction:column;
     gap:7px;
+    min-width:0;
   }
   .fieldWide{
     grid-column:1/-1;
@@ -212,9 +214,48 @@
     border-color:transparent;
     font-weight:800;
   }
+  .trendDayControl{
+    display:grid;
+    gap:10px;
+  }
+  .trendDayPresets{
+    gap:8px;
+  }
+  .weekdayGrid{
+    display:grid;
+    grid-template-columns:repeat(7, minmax(0, 1fr));
+    gap:8px;
+  }
+  .dayToggle{
+    min-width:0;
+    min-height:44px;
+    padding:9px 8px;
+    border-radius:14px;
+    border:1px solid rgba(148,163,184,.14);
+    background:rgba(6,13,26,.46);
+    color:var(--muted);
+    font-size:.88rem;
+    font-weight:800;
+  }
+  .dayToggle.active{
+    color:#04111f;
+    background:linear-gradient(135deg, #fbbf24, #5eead4 54%, #38bdf8);
+    border-color:transparent;
+    box-shadow:0 10px 24px rgba(56,189,248,.14);
+  }
+  .dayToggle:focus-visible,
+  .pillBtn:focus-visible{
+    outline:2px solid rgba(94,234,212,.7);
+    outline-offset:2px;
+  }
+  .averageRuleGrid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:12px;
+  }
   .statsGrid{
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr));
     gap:16px;
   }
   .metricCard{
@@ -253,28 +294,36 @@
   }
   .chartWrap{
     position:relative;
-    border:1px solid rgba(148,163,184,.14);
+    border:1px solid rgba(148,163,184,.16);
     border-radius:18px;
-    background:rgba(6,13,26,.42);
-    padding:16px;
+    background:
+      linear-gradient(180deg, rgba(15,27,49,.64), rgba(6,13,26,.34)),
+      rgba(6,13,26,.42);
+    padding:18px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
   }
   .chartLegend{
     display:flex;
-    gap:14px;
+    gap:10px;
     flex-wrap:wrap;
-    margin-top:10px;
+    margin-top:12px;
     color:var(--muted);
-    font-size:.9rem;
+    font-size:.86rem;
   }
   .legendKey{
     display:inline-flex;
     align-items:center;
     gap:8px;
+    padding:6px 9px;
+    border-radius:999px;
+    border:1px solid rgba(148,163,184,.12);
+    background:rgba(6,13,26,.32);
   }
   .legendSwatch{
-    width:10px;
-    height:10px;
+    width:9px;
+    height:9px;
     border-radius:999px;
+    box-shadow:0 0 18px currentColor;
   }
   .chartTooltip{
     position:absolute;
@@ -334,6 +383,7 @@
   }
   .tableWrap{
     overflow:auto;
+    -webkit-overflow-scrolling:touch;
     border:1px solid rgba(148,163,184,.14);
     border-radius:16px;
     background:rgba(6,13,26,.36);
@@ -342,11 +392,42 @@
     width:100%;
     border-collapse:collapse;
   }
+  #trendChart{
+    min-height:300px;
+  }
+  #trendChart svg{
+    display:block;
+    overflow:visible;
+  }
+  .chartGridLine{
+    stroke:rgba(148,163,184,.12);
+    stroke-width:1;
+  }
+  .chartAxisLine{
+    stroke:rgba(148,163,184,.28);
+    stroke-width:1;
+  }
+  .chartAxisText{
+    fill:rgba(226,232,240,.68);
+    font-size:11px;
+    font-weight:700;
+  }
+  .chartPath{
+    filter:drop-shadow(0 6px 10px rgba(1,8,18,.28));
+  }
+  .chartPoint{
+    transition:r .12s ease, stroke-width .12s ease;
+  }
+  .chartPoint:hover{
+    r:6.5;
+    stroke-width:3;
+  }
   th, td{
     padding:13px 10px;
     border-bottom:1px solid var(--line);
     text-align:left;
     vertical-align:top;
+    overflow-wrap:anywhere;
   }
   th{
     color:var(--muted);
@@ -489,15 +570,164 @@
     .chartPanel{ grid-template-columns:1fr; }
   }
   @media (max-width: 900px){
-    .hero{flex-direction:column}
+    .hero{
+      flex-direction:column;
+      align-items:stretch;
+    }
     .split{grid-template-columns:1fr}
   }
   @media (max-width: 720px){
+    .shell{ padding:18px 12px 34px; }
+    .card{ padding:16px; }
+    .hero{ gap:14px; }
+    h1{
+      font-size:clamp(2rem, 10vw, 2.8rem);
+      line-height:1;
+    }
+    .sub{
+      max-width:none;
+      font-size:.96rem;
+    }
+    .status{
+      width:100%;
+      justify-content:flex-start;
+    }
+    .loginGrid,
+    .controls{
+      grid-template-columns:1fr;
+    }
+    .pillRow{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px;
+    }
+    .trendDayPresets{
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+    }
+    .weekdayGrid{
+      grid-template-columns:repeat(4, minmax(0, 1fr));
+    }
+    .averageRuleGrid{
+      grid-template-columns:1fr;
+    }
+    .pillBtn{
+      width:100%;
+      min-height:46px;
+      white-space:normal;
+      justify-content:center;
+    }
+    .dayToggle{
+      width:100%;
+    }
+    .statsGrid{
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:12px;
+    }
+    .metricCard{
+      min-height:0;
+      padding:14px 12px;
+    }
+    .metricCard span{ font-size:1.12rem; }
+    .metricCard em{ font-size:.8rem; }
+    .chartWrap{ padding:12px; }
+    #trendChart{
+      overflow-x:auto;
+      overflow-y:hidden;
+      -webkit-overflow-scrolling:touch;
+      padding-bottom:4px;
+    }
+    #trendChart svg{ min-width:640px; }
+    .chartTooltip{ display:none; }
+    .summaryStrip{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px;
+    }
+    .summaryPill{
+      width:100%;
+      justify-content:space-between;
+    }
     .actions, .toolbar{align-items:stretch}
-    button, .linkBtn{width:100%}
+    button, .linkBtn{
+      width:100%;
+      min-height:48px;
+    }
+    input, select{ min-height:48px; }
     .logItem{flex-direction:column; align-items:flex-start}
+    .logSelect{ width:100%; }
+    .logMeta{
+      display:grid;
+      gap:6px;
+    }
     .logActions{width:100%}
     .logActions button{width:100%}
+    .tableWrap{
+      overflow:visible;
+      border:0;
+      background:transparent;
+    }
+    .tableWrap table,
+    .tableWrap thead,
+    .tableWrap tbody,
+    .tableWrap tr,
+    .tableWrap th,
+    .tableWrap td{
+      display:block;
+      width:100%;
+    }
+    .tableWrap thead{
+      position:absolute;
+      width:1px;
+      height:1px;
+      padding:0;
+      margin:-1px;
+      overflow:hidden;
+      clip:rect(0, 0, 0, 0);
+      white-space:nowrap;
+      border:0;
+    }
+    .tableWrap tbody{
+      display:grid;
+      gap:12px;
+    }
+    .tableWrap tr{
+      border:1px solid rgba(148,163,184,.14);
+      border-radius:16px;
+      background:rgba(6,13,26,.42);
+      overflow:hidden;
+    }
+    .tableWrap td{
+      display:grid;
+      grid-template-columns:minmax(0, 1fr) auto;
+      gap:12px;
+      align-items:start;
+      padding:10px 14px;
+      text-align:left;
+    }
+    .tableWrap td::before{
+      content:attr(data-label);
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      font-size:.72rem;
+      font-weight:700;
+    }
+    .tableWrap td.numeric{ text-align:left; }
+    .tableWrap td:first-child{
+      color:var(--text);
+      font-weight:800;
+    }
+    .tableWrap td[colspan]{
+      display:block;
+      padding:14px;
+    }
+    .tableWrap td[colspan]::before{ content:none; }
+  }
+  @media (max-width: 480px){
+    .pillRow,
+    .summaryStrip{
+      grid-template-columns:1fr;
+    }
   }
 </style>
 </head>
@@ -595,6 +825,38 @@
             <option value="total_hours">Total hours</option>
           </select>
         </div>
+        <div class="field fieldWide">
+          <label>Duration exclusions</label>
+          <div class="averageRuleGrid">
+            <div class="field">
+              <label for="statsAverageExcludeBelow">Ignore below (minutes)</label>
+              <input id="statsAverageExcludeBelow" type="number" min="0" step="0.1" inputmode="decimal" placeholder="No minimum"/>
+            </div>
+            <div class="field">
+              <label for="statsAverageExcludeAbove">Ignore above (minutes)</label>
+              <input id="statsAverageExcludeAbove" type="number" min="0" step="0.1" inputmode="decimal" placeholder="No maximum"/>
+            </div>
+          </div>
+        </div>
+        <div class="field fieldWide">
+          <label>Trend days</label>
+          <div class="trendDayControl">
+            <div class="pillRow trendDayPresets" id="trendDayPresets">
+              <button class="pillBtn active" type="button" data-days="all">All days</button>
+              <button class="pillBtn" type="button" data-days="weekdays">Weekdays</button>
+              <button class="pillBtn" type="button" data-days="weekend">Weekend</button>
+            </div>
+            <div class="weekdayGrid" id="trendDayFilters" role="group" aria-label="Trend days">
+              <button class="dayToggle active" type="button" data-weekday="0" aria-pressed="true">Sun</button>
+              <button class="dayToggle active" type="button" data-weekday="1" aria-pressed="true">Mon</button>
+              <button class="dayToggle active" type="button" data-weekday="2" aria-pressed="true">Tue</button>
+              <button class="dayToggle active" type="button" data-weekday="3" aria-pressed="true">Wed</button>
+              <button class="dayToggle active" type="button" data-weekday="4" aria-pressed="true">Thu</button>
+              <button class="dayToggle active" type="button" data-weekday="5" aria-pressed="true">Fri</button>
+              <button class="dayToggle active" type="button" data-weekday="6" aria-pressed="true">Sat</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="statsGrid" style="margin-top:18px;">
         <article class="metricCard">
@@ -648,7 +910,7 @@
           <div id="trendChart" class="muted">Refresh stats to load chart.</div>
           <div id="trendTooltip" class="chartTooltip"></div>
           <div class="chartLegend" id="trendLegend">
-            <span class="legendKey"><span class="legendSwatch" style="background:var(--accent-2);"></span>Appointments</span>
+            <span class="legendKey"><span class="legendSwatch" style="background:var(--accent-2); color:var(--accent-2);"></span>Appointments</span>
           </div>
         </div>
         <div class="highlights" id="statsHighlights">
@@ -803,6 +1065,10 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
     var selectedLogIds = {};
     var statsRequestToken = 0;
     var logsRequestToken = 0;
+    var ALL_TREND_DAYS = [0, 1, 2, 3, 4, 5, 6];
+    var WEEKDAY_TREND_DAYS = [1, 2, 3, 4, 5];
+    var WEEKEND_TREND_DAYS = [0, 6];
+    var TREND_DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
     function setStatus(msg){
       $("statusLine").textContent = msg || "";
@@ -942,6 +1208,84 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       return d;
     }
 
+    function parseOptionalMinutesInput(id){
+      var el = $(id);
+      if(!el) return null;
+      var raw = (el.value || "").trim();
+      if(!raw) return null;
+      var value = Number(raw);
+      if(!isFinite(value) || value < 0) return null;
+      return value;
+    }
+
+    function formatThresholdMinutes(value){
+      value = Number(value || 0);
+      var rounded = Math.round(value * 10) / 10;
+      return Math.abs(rounded - Math.round(rounded)) < 0.001 ? String(Math.round(rounded)) : rounded.toFixed(1);
+    }
+
+    function getAverageExclusionRules(){
+      var below = parseOptionalMinutesInput("statsAverageExcludeBelow");
+      var above = parseOptionalMinutesInput("statsAverageExcludeAbove");
+      if(below != null && above != null && below > above){
+        var swap = below;
+        below = above;
+        above = swap;
+        $("statsAverageExcludeBelow").value = formatThresholdMinutes(below);
+        $("statsAverageExcludeAbove").value = formatThresholdMinutes(above);
+      }
+      return {
+        active: below != null || above != null,
+        belowMinutes: below,
+        aboveMinutes: above,
+        belowMs: below == null ? null : below * 60000,
+        aboveMs: above == null ? null : above * 60000
+      };
+    }
+
+    function durationCountsForAverage(durationMs, rules){
+      durationMs = Number(durationMs || 0);
+      if(!isFinite(durationMs) || durationMs < 0) return false;
+      rules = rules || {};
+      if(rules.belowMs != null && durationMs < rules.belowMs) return false;
+      if(rules.aboveMs != null && durationMs > rules.aboveMs) return false;
+      return true;
+    }
+
+    function filterDurationsForAverage(durations, rules){
+      return (durations || []).filter(function(duration){
+        return durationCountsForAverage(duration, rules);
+      });
+    }
+
+    function averageDuration(durations, rules){
+      var included = filterDurationsForAverage(durations, rules);
+      var total = included.reduce(function(sum, value){ return sum + value; }, 0);
+      return included.length ? total / included.length : 0;
+    }
+
+    function countAverageExcluded(durations, rules){
+      if(!rules || !rules.active) return 0;
+      return (durations || []).filter(function(duration){
+        return !durationCountsForAverage(duration, rules);
+      }).length;
+    }
+
+    function filterRowsByDurationRules(rows, rules){
+      if(!rules || !rules.active) return (rows || []).slice();
+      return (rows || []).filter(function(row){
+        return durationCountsForAverage(Number(row.duration_ms || 0), rules);
+      });
+    }
+
+    function summarizeAverageRules(rules){
+      if(!rules || !rules.active) return "No exclusions";
+      var parts = [];
+      if(rules.belowMinutes != null) parts.push("Below " + formatThresholdMinutes(rules.belowMinutes) + " min");
+      if(rules.aboveMinutes != null) parts.push("Above " + formatThresholdMinutes(rules.aboveMinutes) + " min");
+      return parts.join(", ");
+    }
+
     function readStoredPreferences(){
       try{
         var raw = localStorage.getItem(STORAGE_KEY);
@@ -960,6 +1304,9 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
           statsDoctorFilter: $("statsDoctorFilter").value || "",
           statsGraphMode: $("statsGraphMode").value || "appointments",
           statsTrendMetric: $("statsTrendMetric").value || "avg_duration",
+          statsTrendDays: getSelectedTrendDays().join(","),
+          statsAverageExcludeBelow: $("statsAverageExcludeBelow").value || "",
+          statsAverageExcludeAbove: $("statsAverageExcludeAbove").value || "",
           statsPreset: $("statsQuickRanges").dataset.activePreset || "",
           roomLogsType: $("roomLogsType").value || "room",
           roomLogsStart: $("roomLogsStart").value || "",
@@ -1000,6 +1347,9 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       if(prefs.statsGroupBy) $("statsGroupBy").value = prefs.statsGroupBy;
       if(prefs.statsGraphMode) $("statsGraphMode").value = prefs.statsGraphMode;
       if(prefs.statsTrendMetric) $("statsTrendMetric").value = prefs.statsTrendMetric;
+      if(prefs.statsAverageExcludeBelow != null) $("statsAverageExcludeBelow").value = prefs.statsAverageExcludeBelow;
+      if(prefs.statsAverageExcludeAbove != null) $("statsAverageExcludeAbove").value = prefs.statsAverageExcludeAbove;
+      setTrendDaySelection(prefs.statsTrendDays || ALL_TREND_DAYS.join(","), false);
       $("statsDoctorFilter").dataset.pendingValue = prefs.statsDoctorFilter || "";
 
       if(prefs.roomLogsType) $("roomLogsType").value = prefs.roomLogsType;
@@ -1043,6 +1393,111 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
     function clearActivePreset(){
       setActivePreset("");
       savePreferences();
+    }
+
+    function normalizeTrendDays(days){
+      var source = days;
+      if(typeof source === "string"){
+        source = source.split(",");
+      }
+      if(!Array.isArray(source)) source = ALL_TREND_DAYS.slice();
+      var seen = {};
+      var normalized = [];
+      source.forEach(function(day){
+        var value = Number(day);
+        if(Number.isInteger(value) && value >= 0 && value <= 6 && !seen[value]){
+          seen[value] = true;
+          normalized.push(value);
+        }
+      });
+      if(!normalized.length) normalized = ALL_TREND_DAYS.slice();
+      normalized.sort(function(a, b){ return a - b; });
+      return normalized;
+    }
+
+    function trendDaysEqual(a, b){
+      a = normalizeTrendDays(a);
+      b = normalizeTrendDays(b);
+      if(a.length !== b.length) return false;
+      for(var i = 0; i < a.length; i++){
+        if(a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+
+    function getSelectedTrendDays(){
+      var selected = [];
+      $all("#trendDayFilters .dayToggle.active").forEach(function(btn){
+        selected.push(btn.getAttribute("data-weekday"));
+      });
+      return normalizeTrendDays(selected);
+    }
+
+    function getTrendDayPresetKey(days){
+      if(trendDaysEqual(days, ALL_TREND_DAYS)) return "all";
+      if(trendDaysEqual(days, WEEKDAY_TREND_DAYS)) return "weekdays";
+      if(trendDaysEqual(days, WEEKEND_TREND_DAYS)) return "weekend";
+      return "";
+    }
+
+    function updateTrendDayPresetState(days){
+      var presetKey = getTrendDayPresetKey(days);
+      $all("#trendDayPresets .pillBtn").forEach(function(btn){
+        btn.classList.toggle("active", btn.getAttribute("data-days") === presetKey);
+      });
+    }
+
+    function setTrendDaySelection(days, shouldSave){
+      var selected = normalizeTrendDays(days);
+      var selectedMap = {};
+      selected.forEach(function(day){ selectedMap[day] = true; });
+      $all("#trendDayFilters .dayToggle").forEach(function(btn){
+        var day = Number(btn.getAttribute("data-weekday"));
+        var active = !!selectedMap[day];
+        btn.classList.toggle("active", active);
+        btn.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      updateTrendDayPresetState(selected);
+      if(shouldSave) savePreferences();
+    }
+
+    function applyTrendDayPreset(presetKey){
+      if(presetKey === "weekdays") setTrendDaySelection(WEEKDAY_TREND_DAYS, true);
+      else if(presetKey === "weekend") setTrendDaySelection(WEEKEND_TREND_DAYS, true);
+      else setTrendDaySelection(ALL_TREND_DAYS, true);
+      rerenderStatsIfLoaded();
+    }
+
+    function toggleTrendDay(day){
+      var selected = getSelectedTrendDays();
+      day = Number(day);
+      var next = selected.filter(function(value){ return value !== day; });
+      if(next.length === selected.length) next.push(day);
+      if(!next.length) next = [day];
+      setTrendDaySelection(next, true);
+      rerenderStatsIfLoaded();
+    }
+
+    function getTrendDayLookup(days){
+      var lookup = {};
+      normalizeTrendDays(days).forEach(function(day){ lookup[day] = true; });
+      return lookup;
+    }
+
+    function filterRowsByTrendDays(rows, days){
+      var lookup = getTrendDayLookup(days);
+      return (rows || []).filter(function(row){
+        var d = new Date(row.started_at);
+        return !isNaN(d.getTime()) && !!lookup[d.getDay()];
+      });
+    }
+
+    function summarizeTrendDays(days){
+      days = normalizeTrendDays(days);
+      if(trendDaysEqual(days, ALL_TREND_DAYS)) return "All days";
+      if(trendDaysEqual(days, WEEKDAY_TREND_DAYS)) return "Weekdays";
+      if(trendDaysEqual(days, WEEKEND_TREND_DAYS)) return "Weekend";
+      return days.map(function(day){ return TREND_DAY_LABELS[day]; }).join(", ");
     }
 
     function normalizeRangeInput(startId, endId, fallbackDays){
@@ -1183,11 +1638,18 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       }
     }
 
-    function getRangeDayCount(){
+    function getRangeDayCount(days){
       var range = getStatsRange();
-      var diff = range.endIso ? (new Date(range.endIso).getTime() - range.start.getTime()) : 0;
-      if(!isFinite(diff) || diff <= 0) return 1;
-      return Math.max(1, Math.round(diff / (24 * 3600 * 1000)));
+      var endExclusive = new Date(range.end.getTime() + 24 * 3600 * 1000);
+      var hasDayFilter = Array.isArray(days) || typeof days === "string";
+      var lookup = hasDayFilter ? getTrendDayLookup(days) : null;
+      var count = 0;
+      var cursor = new Date(range.start.getTime());
+      while(cursor.getTime() < endExclusive.getTime()){
+        if(!lookup || lookup[cursor.getDay()]) count++;
+        cursor = new Date(cursor.getTime() + 24 * 3600 * 1000);
+      }
+      return hasDayFilter ? count : Math.max(1, count);
     }
 
     function getWeekNumber(date){
@@ -1229,23 +1691,26 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       return isNaN(dayDate.getTime()) ? key : dayDate.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
     }
 
-    function getAllPeriodKeys(groupBy){
+    function getAllPeriodKeys(groupBy, days){
       var range = getStatsRange();
       var keys = {};
       var cursor = new Date(range.start.getTime());
       var endExclusive = new Date(range.end.getTime() + 24 * 3600 * 1000);
+      var lookup = getTrendDayLookup(days || ALL_TREND_DAYS);
       while(cursor.getTime() < endExclusive.getTime()){
-        keys[getLocalPeriodKey(cursor, groupBy)] = true;
+        if(lookup[cursor.getDay()]){
+          keys[getLocalPeriodKey(cursor, groupBy)] = true;
+        }
         cursor = new Date(cursor.getTime() + 24 * 3600 * 1000);
       }
       return Object.keys(keys).sort();
     }
 
     function createBucket(){
-      return { count: 0, total: 0, durations: [] };
+      return { count: 0, total: 0, durations: [], averageCount: 0, averageTotal: 0 };
     }
 
-    function accumulateBuckets(rows, groupBy){
+    function accumulateBuckets(rows, groupBy, averageRules){
       var map = {};
       for(var i = 0; i < rows.length; i++){
         var key = getLocalPeriodKey(rows[i].started_at, groupBy);
@@ -1256,9 +1721,18 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
           map[key].count++;
           map[key].total += duration;
           map[key].durations.push(duration);
+          if(durationCountsForAverage(duration, averageRules)){
+            map[key].averageCount++;
+            map[key].averageTotal += duration;
+          }
         }
       }
       return map;
+    }
+
+    function getAverageDurationFromBucket(bucket){
+      if(!bucket || !bucket.averageCount) return 0;
+      return (bucket.averageTotal || 0) / bucket.averageCount;
     }
 
     function getMetricValueFromBucket(bucket, metricMode){
@@ -1266,7 +1740,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       if(metricMode === "count") return bucket.count || 0;
       if(metricMode === "total_hours") return (bucket.total || 0) / 3600000;
       if(metricMode === "median_duration") return bucket.count ? median(bucket.durations || []) : 0;
-      return bucket.count ? ((bucket.total || 0) / bucket.count) : 0;
+      return getAverageDurationFromBucket(bucket);
     }
 
     function formatMetricValue(value, metricMode){
@@ -1286,7 +1760,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
             label: labelPeriodKey(key, groupBy),
             metricValue: getMetricValueFromBucket(bucket, metricMode),
             count: bucket.count || 0,
-            avgDurationMs: bucket.count ? ((bucket.total || 0) / bucket.count) : 0,
+            avgDurationMs: getAverageDurationFromBucket(bucket),
             medianDurationMs: bucket.count ? median(bucket.durations || []) : 0,
             totalDurationMs: bucket.total || 0
           };
@@ -1302,6 +1776,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       var emptyMessage = options.emptyMessage || "No session data available for this range.";
       var valueFormatter = options.valueFormatter || function(value){ return String(value); };
       var tooltipLabel = options.tooltipLabel || "Metric";
+      var metricMode = options.metricMode || "";
 
       if(!seriesList || !seriesList.length || !seriesList.some(function(series){
         return (series.points || []).some(function(point){ return Number(point.metricValue || 0) > 0; });
@@ -1315,61 +1790,117 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
         return;
       }
 
-      var width = 820;
-      var height = 280;
-      var padX = 48;
-      var padTop = 18;
-      var padBottom = 44;
+      var width = 920;
+      var height = 320;
+      var padLeft = 66;
+      var padRight = 28;
+      var padTop = 26;
+      var padBottom = 62;
       var chartHeight = height - padTop - padBottom;
-      var innerWidth = width - (padX * 2);
-      var maxValue = 1;
+      var innerWidth = width - padLeft - padRight;
+      var maxRawValue = 1;
       var labelCount = 0;
+      var isDurationMetric = metricMode === "avg_duration" || metricMode === "median_duration";
+      var tickCount = isDurationMetric ? 3 : 4;
 
       seriesList.forEach(function(series){
         var points = series.points || [];
         labelCount = Math.max(labelCount, points.length);
         points.forEach(function(point){
-          maxValue = Math.max(maxValue, Number(point.metricValue || 0));
+          maxRawValue = Math.max(maxRawValue, Number(point.metricValue || 0));
         });
       });
+
+      function niceLinearMax(value){
+        value = Number(value || 1);
+        if(value <= 1) return 1;
+        var power = Math.pow(10, Math.floor(Math.log10(value)));
+        var fraction = value / power;
+        var niceFraction = fraction <= 1 ? 1 : (fraction <= 2 ? 2 : (fraction <= 5 ? 5 : 10));
+        return niceFraction * power;
+      }
+
+      function niceChartMax(value){
+        value = Math.max(1, Number(value || 1));
+        if(isDurationMetric){
+          var minute = 60000;
+          var step = value <= 30 * minute ? 5 * minute : (value <= 2 * 3600000 ? 15 * minute : 30 * minute);
+          var durationTickSpan = step * tickCount;
+          return Math.max(durationTickSpan, Math.ceil(value / durationTickSpan) * durationTickSpan);
+        }
+        if(metricMode === "count"){
+          var countMax = niceLinearMax(value);
+          return Math.max(tickCount, Math.ceil(countMax / tickCount) * tickCount);
+        }
+        if(metricMode === "total_hours") return Math.max(1, niceLinearMax(value));
+        return niceLinearMax(value);
+      }
+
+      var maxValue = niceChartMax(maxRawValue * 1.08);
 
       function yFor(value){
         return padTop + (chartHeight - ((value / maxValue) * chartHeight));
       }
 
+      function xFor(points, idx){
+        return points.length === 1 ? (padLeft + innerWidth / 2) : (padLeft + (innerWidth * idx / Math.max(1, points.length - 1)));
+      }
+
       var labels = "";
       var dots = "";
       var paths = "";
+      var areas = "";
+      var defs = "";
       var labelSource = (seriesList[0] && seriesList[0].points) ? seriesList[0].points : [];
+      var labelEvery = Math.max(1, Math.ceil(labelSource.length / 8));
+      var baselineY = padTop + chartHeight;
 
-      seriesList.forEach(function(series){
+      seriesList.forEach(function(series, seriesIndex){
         var points = series.points || [];
-        var durationPath = "";
+        var linePath = "";
+        var areaPath = "";
         points.forEach(function(point, idx){
-          var x = points.length === 1 ? (width / 2) : (padX + (innerWidth * idx / Math.max(1, points.length - 1)));
+          var x = xFor(points, idx);
           var y = yFor(Number(point.metricValue || 0));
-          durationPath += (idx ? " L " : "M ") + x + " " + y;
-          dots += '<circle class="chartPoint" data-series="' + escapeHtml(series.name || "") + '" data-label="' + escapeHtml(point.label || "") + '" data-metric="' + escapeHtml(valueFormatter(point.metricValue || 0)) + '" data-count="' + escapeHtml(String(point.count || 0)) + '" data-average="' + escapeHtml(msToHMS(point.avgDurationMs || 0)) + '" data-median="' + escapeHtml(msToHMS(point.medianDurationMs || 0)) + '" data-total="' + escapeHtml(formatCount((point.totalDurationMs || 0) / 3600000) + " hrs") + '" cx="' + x + '" cy="' + y + '" r="5" fill="' + escapeHtml(series.color) + '" style="cursor:pointer"></circle>';
+          linePath += (idx ? " L " : "M ") + x + " " + y;
+          if(!idx) areaPath = "M " + x + " " + baselineY + " L " + x + " " + y;
+          else areaPath += " L " + x + " " + y;
+          dots += '<circle class="chartPoint" data-series="' + escapeHtml(series.name || "") + '" data-label="' + escapeHtml(point.label || "") + '" data-metric="' + escapeHtml(valueFormatter(point.metricValue || 0)) + '" data-count="' + escapeHtml(String(point.count || 0)) + '" data-average="' + escapeHtml(msToHMS(point.avgDurationMs || 0)) + '" data-median="' + escapeHtml(msToHMS(point.medianDurationMs || 0)) + '" data-total="' + escapeHtml(formatCount((point.totalDurationMs || 0) / 3600000) + " hrs") + '" cx="' + x + '" cy="' + y + '" r="4.8" fill="' + escapeHtml(series.color) + '" stroke="#07111f" stroke-width="2.2" style="cursor:pointer"></circle>';
         });
-        paths += '<path d="' + durationPath + '" fill="none" stroke="' + escapeHtml(series.color) + '" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>';
+        var gradientId = "trendGradient" + seriesIndex;
+        defs += '<linearGradient id="' + gradientId + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + escapeHtml(series.color) + '" stop-opacity=".26"></stop><stop offset="100%" stop-color="' + escapeHtml(series.color) + '" stop-opacity="0"></stop></linearGradient>';
+        if(points.length > 1){
+          var lastX = xFor(points, points.length - 1);
+          areaPath += " L " + lastX + " " + baselineY + " Z";
+          areas += '<path d="' + areaPath + '" fill="url(#' + gradientId + ')"></path>';
+        }
+        paths += '<path class="chartPath" d="' + linePath + '" fill="none" stroke="' + escapeHtml(series.color) + '" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"></path>';
       });
 
       labelSource.forEach(function(point, idx){
-        var x = labelSource.length === 1 ? (width / 2) : (padX + (innerWidth * idx / Math.max(1, labelSource.length - 1)));
-        labels += '<text x="' + x + '" y="' + (height - 16) + '" text-anchor="middle" fill="var(--muted)" font-size="11">' + escapeHtml(point.label || "") + '</text>';
+        if(idx !== 0 && idx !== labelSource.length - 1 && idx % labelEvery !== 0) return;
+        var x = xFor(labelSource, idx);
+        var labelY = height - 22;
+        var anchor = labelSource.length > 8 ? "end" : "middle";
+        var transform = labelSource.length > 8 ? (' transform="rotate(-26 ' + x + ' ' + labelY + ')"') : "";
+        labels += '<text class="chartAxisText" x="' + x + '" y="' + labelY + '" text-anchor="' + anchor + '"' + transform + '>' + escapeHtml(point.label || "") + '</text>';
       });
 
       var grid = "";
-      for(var g = 0; g < 4; g++){
-        var value = maxValue * (1 - (g / 3));
-        var y = padTop + (chartHeight * g / 3);
-        grid += '<line x1="' + padX + '" y1="' + y + '" x2="' + (width - padX) + '" y2="' + y + '" stroke="rgba(148,163,184,.14)" stroke-width="1"></line>';
-        grid += '<text x="10" y="' + (y + 4) + '" fill="var(--muted)" font-size="11">' + escapeHtml(valueFormatter(value)) + '</text>';
+      for(var g = 0; g <= tickCount; g++){
+        var value = maxValue * (1 - (g / tickCount));
+        var y = padTop + (chartHeight * g / tickCount);
+        grid += '<line class="chartGridLine" x1="' + padLeft + '" y1="' + y + '" x2="' + (width - padRight) + '" y2="' + y + '"></line>';
+        grid += '<text class="chartAxisText" x="' + (padLeft - 12) + '" y="' + (y + 4) + '" text-anchor="end">' + escapeHtml(valueFormatter(value)) + '</text>';
       }
+      grid += '<line class="chartAxisLine" x1="' + padLeft + '" y1="' + baselineY + '" x2="' + (width - padRight) + '" y2="' + baselineY + '"></line>';
+      grid += '<line class="chartAxisLine" x1="' + padLeft + '" y1="' + padTop + '" x2="' + padLeft + '" y2="' + baselineY + '"></line>';
 
       el.innerHTML =
-        '<svg viewBox="0 0 ' + width + ' ' + height + '" width="100%" height="280" role="img" aria-label="Trend chart">'
+        '<svg viewBox="0 0 ' + width + ' ' + height + '" width="100%" height="320" role="img" aria-label="Trend chart">'
+        + '<defs>' + defs + '</defs>'
         + grid
+        + areas
         + paths
         + dots
         + labels
@@ -1377,7 +1908,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
 
       if(legend){
         legend.innerHTML = seriesList.map(function(series){
-          return '<span class="legendKey"><span class="legendSwatch" style="background:' + escapeHtml(series.color) + ';"></span>' + escapeHtml(series.name) + '</span>';
+          return '<span class="legendKey"><span class="legendSwatch" style="background:' + escapeHtml(series.color) + '; color:' + escapeHtml(series.color) + ';"></span>' + escapeHtml(series.name) + '</span>';
         }).join("");
       }
 
@@ -1395,8 +1926,14 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
             + '<div>Avg: ' + escapeHtml(point.getAttribute("data-average") || "00:00:00") + '</div>'
             + '<div>Median: ' + escapeHtml(point.getAttribute("data-median") || "00:00:00") + '</div>'
             + '<div>Total: ' + escapeHtml(point.getAttribute("data-total") || "0 hrs") + '</div>';
-          tooltip.style.left = (evt.clientX - wrapRect.left + 12) + "px";
-          tooltip.style.top = (evt.clientY - wrapRect.top - 18) + "px";
+          var left = evt.clientX - wrapRect.left + 14;
+          var top = evt.clientY - wrapRect.top - 22;
+          var tooltipWidth = tooltip.offsetWidth || 210;
+          var tooltipHeight = tooltip.offsetHeight || 130;
+          left = Math.max(8, Math.min(left, wrapRect.width - tooltipWidth - 8));
+          top = Math.max(8, Math.min(top, wrapRect.height - tooltipHeight - 8));
+          tooltip.style.left = left + "px";
+          tooltip.style.top = top + "px";
           tooltip.className = "chartTooltip show";
         });
         point.addEventListener("mouseleave", function(){
@@ -1406,7 +1943,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       });
     }
 
-    function renderBreakdownTables(roomRows, cleaningRows, filteredRoomRows, selectedDoctor, isComparison){
+    function renderBreakdownTables(roomRows, cleaningRows, filteredRoomRows, selectedDoctor, isComparison, averageRules){
       var doctorBody = $("doctorBreakdownBody");
       var roomBody = $("roomBreakdownBody");
       var analysisStatus = $("analysisStatus");
@@ -1418,25 +1955,33 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       doctorSource.forEach(function(row){
         var doctor = (row.doctor_name || "Unassigned").trim() || "Unassigned";
         if(!doctorMap[doctor]){
-          doctorMap[doctor] = { count: 0, total: 0, durations: [] };
+          doctorMap[doctor] = { count: 0, total: 0, durations: [], averageCount: 0, averageTotal: 0 };
         }
         var duration = Number(row.duration_ms || 0);
         if(isFinite(duration) && duration >= 0){
           doctorMap[doctor].count++;
           doctorMap[doctor].total += duration;
           doctorMap[doctor].durations.push(duration);
+          if(durationCountsForAverage(duration, averageRules)){
+            doctorMap[doctor].averageCount++;
+            doctorMap[doctor].averageTotal += duration;
+          }
         }
       });
 
       filteredRoomRows.forEach(function(row){
         var room = (row.room_name || "(unnamed room)").trim() || "(unnamed room)";
         if(!roomMap[room]){
-          roomMap[room] = { visits: 0, total: 0, cleanings: 0, lastUsed: "" };
+          roomMap[room] = { visits: 0, total: 0, cleanings: 0, lastUsed: "", averageCount: 0, averageTotal: 0 };
         }
         var duration = Number(row.duration_ms || 0);
         if(isFinite(duration) && duration >= 0){
           roomMap[room].visits++;
           roomMap[room].total += duration;
+          if(durationCountsForAverage(duration, averageRules)){
+            roomMap[room].averageCount++;
+            roomMap[room].averageTotal += duration;
+          }
         }
         if(row.started_at && (!roomMap[room].lastUsed || new Date(row.started_at).getTime() > new Date(roomMap[room].lastUsed).getTime())){
           roomMap[room].lastUsed = row.started_at;
@@ -1446,7 +1991,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       cleaningRows.forEach(function(row){
         var room = (row.room_name || "(unnamed room)").trim() || "(unnamed room)";
         if(!roomMap[room]){
-          roomMap[room] = { visits: 0, total: 0, cleanings: 0, lastUsed: "" };
+          roomMap[room] = { visits: 0, total: 0, cleanings: 0, lastUsed: "", averageCount: 0, averageTotal: 0 };
         }
         roomMap[room].cleanings++;
         if(row.started_at && (!roomMap[room].lastUsed || new Date(row.started_at).getTime() > new Date(roomMap[room].lastUsed).getTime())){
@@ -1462,16 +2007,16 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       } else {
         doctorBody.innerHTML = doctorRows.map(function(name){
           var item = doctorMap[name];
-          var avg = item.count ? item.total / item.count : 0;
+          var avg = item.averageCount ? item.averageTotal / item.averageCount : 0;
           var med = item.count ? median(item.durations) : 0;
           var share = totalVisits ? (item.count / totalVisits) * 100 : 0;
           return '<tr>'
-            + '<td>' + escapeHtml(name) + '</td>'
-            + '<td class="numeric">' + escapeHtml(String(item.count)) + '</td>'
-            + '<td class="numeric">' + escapeHtml(msToHMS(avg)) + '</td>'
-            + '<td class="numeric">' + escapeHtml(msToHMS(med)) + '</td>'
-            + '<td class="numeric">' + escapeHtml(formatCount(item.total / 3600000)) + '</td>'
-            + '<td class="numeric">' + escapeHtml(formatPercent(share)) + '</td>'
+            + '<td data-label="Doctor">' + escapeHtml(name) + '</td>'
+            + '<td class="numeric" data-label="Visits">' + escapeHtml(String(item.count)) + '</td>'
+            + '<td class="numeric" data-label="Avg">' + escapeHtml(msToHMS(avg)) + '</td>'
+            + '<td class="numeric" data-label="Median">' + escapeHtml(msToHMS(med)) + '</td>'
+            + '<td class="numeric" data-label="Hours">' + escapeHtml(formatCount(item.total / 3600000)) + '</td>'
+            + '<td class="numeric" data-label="Share">' + escapeHtml(formatPercent(share)) + '</td>'
             + '</tr>';
         }).join("");
       }
@@ -1484,14 +2029,14 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       } else {
         roomBody.innerHTML = roomRowsSorted.map(function(name){
           var item = roomMap[name];
-          var avg = item.visits ? item.total / item.visits : 0;
+          var avg = item.averageCount ? item.averageTotal / item.averageCount : 0;
           return '<tr>'
-            + '<td>' + escapeHtml(name) + '</td>'
-            + '<td class="numeric">' + escapeHtml(String(item.visits)) + '</td>'
-            + '<td class="numeric">' + escapeHtml(msToHMS(avg)) + '</td>'
-            + '<td class="numeric">' + escapeHtml(String(item.cleanings)) + '</td>'
-            + '<td class="numeric">' + escapeHtml(formatCount(item.total / 3600000)) + '</td>'
-            + '<td class="numeric">' + escapeHtml(formatDateOnly(item.lastUsed)) + '</td>'
+            + '<td data-label="Room">' + escapeHtml(name) + '</td>'
+            + '<td class="numeric" data-label="Visits">' + escapeHtml(String(item.visits)) + '</td>'
+            + '<td class="numeric" data-label="Avg">' + escapeHtml(msToHMS(avg)) + '</td>'
+            + '<td class="numeric" data-label="Cleanings">' + escapeHtml(String(item.cleanings)) + '</td>'
+            + '<td class="numeric" data-label="Hours">' + escapeHtml(formatCount(item.total / 3600000)) + '</td>'
+            + '<td class="numeric" data-label="Last used">' + escapeHtml(formatDateOnly(item.lastUsed)) + '</td>'
             + '</tr>';
         }).join("");
       }
@@ -1509,6 +2054,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       var graphMode = getSelectedGraphMode();
       var metricMode = getSelectedTrendMetric();
       updateTrendMeta(graphMode, metricMode);
+      var averageRules = getAverageExclusionRules();
 
       var selectedDoctor = getSelectedDoctor();
       var isComparison = (selectedDoctor === "__comparison__");
@@ -1516,16 +2062,23 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
         var doctorName = (row.doctor_name || "").trim();
         return !selectedDoctor || isComparison || doctorName === selectedDoctor;
       });
+      var statsRoomRows = filterRowsByDurationRules(filteredRoomRows, averageRules);
+      var statsAllRoomRows = filterRowsByDurationRules(roomRows, averageRules);
+      var statsCleaningRows = filterRowsByDurationRules(cleaningRows, averageRules);
 
-      var roomDur = filteredRoomRows.map(function(r){ return Number(r.duration_ms || 0); }).filter(function(v){ return isFinite(v) && v >= 0; });
+      var rawRoomDur = filteredRoomRows.map(function(r){ return Number(r.duration_ms || 0); }).filter(function(v){ return isFinite(v) && v >= 0; });
+      var roomDur = statsRoomRows.map(function(r){ return Number(r.duration_ms || 0); }).filter(function(v){ return isFinite(v) && v >= 0; });
       var roomTotal = roomDur.reduce(function(sum, v){ return sum + v; }, 0);
-      var roomAvg = roomDur.length ? roomTotal / roomDur.length : 0;
+      var roomAvg = averageDuration(roomDur, averageRules);
       var roomMed = roomDur.length ? median(roomDur) : 0;
       var roomP90 = roomDur.length ? percentile(roomDur, 0.9) : 0;
+      var roomAverageExcluded = countAverageExcluded(rawRoomDur, averageRules);
 
-      var cleanDur = cleaningRows.map(function(r){ return Number(r.duration_ms || 0); }).filter(function(v){ return isFinite(v) && v >= 0; });
+      var rawCleanDur = cleaningRows.map(function(r){ return Number(r.duration_ms || 0); }).filter(function(v){ return isFinite(v) && v >= 0; });
+      var cleanDur = statsCleaningRows.map(function(r){ return Number(r.duration_ms || 0); }).filter(function(v){ return isFinite(v) && v >= 0; });
       var cleanTotal = cleanDur.reduce(function(sum, v){ return sum + v; }, 0);
-      var cleanAvg = cleanDur.length ? cleanTotal / cleanDur.length : 0;
+      var cleanAvg = averageDuration(cleanDur, averageRules);
+      var cleanAverageExcluded = countAverageExcluded(rawCleanDur, averageRules);
 
       var uniqueRooms = {};
       var byHour = {};
@@ -1535,7 +2088,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       var shortOutliers = 0;
       var longOutliers = 0;
 
-      filteredRoomRows.forEach(function(row){
+      statsRoomRows.forEach(function(row){
         var roomNameSeen = (row.room_name || "").trim();
         var doctorNameSeen = (row.doctor_name || "Unassigned").trim() || "Unassigned";
         var durationMs = Number(row.duration_ms || 0);
@@ -1582,22 +2135,26 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
         }
       });
 
-      $("visitCount").textContent = String(filteredRoomRows.length);
+      $("visitCount").textContent = String(statsRoomRows.length);
       $("avgRoomTime").textContent = msToHMS(roomAvg);
       $("medianRoomTime").textContent = msToHMS(roomMed);
       $("p90RoomTime").textContent = msToHMS(roomP90);
-      $("cleanCount").textContent = String(cleaningRows.length);
+      $("cleanCount").textContent = String(statsCleaningRows.length);
       $("avgCleanTime").textContent = msToHMS(cleanAvg);
       $("roomHoursTotal").textContent = formatCount(roomTotal / 3600000);
       $("uniqueRoomsCount").textContent = String(staffedRooms);
 
       var groupBy = getSelectedGroupBy();
-      var orderedKeys = getAllPeriodKeys(groupBy);
+      var selectedTrendDays = getSelectedTrendDays();
+      var orderedKeys = getAllPeriodKeys(groupBy, selectedTrendDays);
+      var trendRoomRows = filterRowsByTrendDays(statsRoomRows, selectedTrendDays);
+      var trendAllRoomRows = filterRowsByTrendDays(statsAllRoomRows, selectedTrendDays);
+      var trendCleaningRows = filterRowsByTrendDays(statsCleaningRows, selectedTrendDays);
       var seriesList = [];
 
       if(graphMode === "cleaning"){
         seriesList.push(buildSeriesFromBucketMap(
-          accumulateBuckets(cleaningRows, groupBy),
+          accumulateBuckets(trendCleaningRows, groupBy, averageRules),
           orderedKeys,
           groupBy,
           metricMode,
@@ -1606,7 +2163,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
         ));
       } else if(isComparison){
         var byDoctorSeries = {};
-        roomRows.forEach(function(row){
+        trendAllRoomRows.forEach(function(row){
           var doctorName = (row.doctor_name || "").trim();
           if(!doctorName) return;
           if(!byDoctorSeries[doctorName]) byDoctorSeries[doctorName] = [];
@@ -1614,7 +2171,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
         });
         Object.keys(byDoctorSeries).sort(function(a, b){ return a.localeCompare(b); }).forEach(function(name, idx){
           seriesList.push(buildSeriesFromBucketMap(
-            accumulateBuckets(byDoctorSeries[name], groupBy),
+            accumulateBuckets(byDoctorSeries[name], groupBy, averageRules),
             orderedKeys,
             groupBy,
             metricMode,
@@ -1624,7 +2181,7 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
         });
       } else {
         seriesList.push(buildSeriesFromBucketMap(
-          accumulateBuckets(filteredRoomRows, groupBy),
+          accumulateBuckets(trendRoomRows, groupBy, averageRules),
           orderedKeys,
           groupBy,
           metricMode,
@@ -1634,26 +2191,32 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
       }
 
       renderTrendChart(seriesList, {
+        metricMode: metricMode,
         tooltipLabel: (metricMode === "count")
           ? "Sessions"
           : (metricMode === "total_hours" ? "Total hours" : (metricMode === "median_duration" ? "Median duration" : "Average duration")),
         valueFormatter: function(value){ return formatMetricValue(value, metricMode); },
-        emptyMessage: graphMode === "cleaning"
-          ? "No cleaning data available for this range."
-          : (isComparison ? "No appointment data available to compare for this range." : "No appointment data available for this range.")
+        emptyMessage: averageRules.active
+          ? "No session durations match the duration exclusion settings for this graph."
+          : (graphMode === "cleaning"
+            ? "No cleaning data available for this range."
+            : (isComparison ? "No appointment data available to compare for this range." : "No appointment data available for this range."))
       });
 
       var outlierCount = shortOutliers + longOutliers;
-      var outlierRate = filteredRoomRows.length ? ((outlierCount / filteredRoomRows.length) * 100) : 0;
+      var outlierRate = statsRoomRows.length ? ((outlierCount / statsRoomRows.length) * 100) : 0;
       $("statsHighlights").innerHTML =
         '<div class="highlightItem"><strong>Busiest weekday</strong><span>' + escapeHtml(busiestWeekday || "—") + (busiestWeekdayCount > -1 ? (' (' + busiestWeekdayCount + ')') : "") + '</span></div>' +
         '<div class="highlightItem"><strong>Peak start hour</strong><span>' + escapeHtml(peakHour == null ? "—" : formatHourLabel(peakHour)) + (peakHourCount > -1 ? (' (' + peakHourCount + ')') : "") + '</span></div>' +
         '<div class="highlightItem"><strong>Top doctor</strong><span>' + escapeHtml(topDoctor || "—") + (topDoctorCount > -1 ? (' (' + topDoctorCount + ' visits)') : "") + '</span></div>' +
         '<div class="highlightItem"><strong>Outlier rate</strong><span>' + escapeHtml(formatPercent(outlierRate)) + '</span></div>' +
+        '<div class="highlightItem"><strong>Duration rule</strong><span>' + escapeHtml(summarizeAverageRules(averageRules)) + '</span></div>' +
+        '<div class="highlightItem"><strong>Excluded</strong><span>' + escapeHtml(String(roomAverageExcluded)) + ' room, ' + escapeHtml(String(cleanAverageExcluded)) + ' cleaning</span></div>' +
         '<div class="highlightItem"><strong>Graph view</strong><span>' + escapeHtml(graphMode === "cleaning" ? "Cleaning" : (isComparison ? "Doctor comparison" : (selectedDoctor || "All doctors"))) + '</span></div>' +
-        '<div class="highlightItem"><strong>Range coverage</strong><span>' + escapeHtml(String(getRangeDayCount())) + ' day(s)</span></div>';
+        '<div class="highlightItem"><strong>Trend days</strong><span>' + escapeHtml(summarizeTrendDays(selectedTrendDays)) + '</span></div>' +
+        '<div class="highlightItem"><strong>Range coverage</strong><span>' + escapeHtml(String(getRangeDayCount())) + ' day(s), ' + escapeHtml(String(getRangeDayCount(selectedTrendDays))) + ' graphed</span></div>';
 
-      renderBreakdownTables(roomRows, cleaningRows, filteredRoomRows, selectedDoctor, isComparison);
+      renderBreakdownTables(statsAllRoomRows, statsCleaningRows, statsRoomRows, selectedDoctor, isComparison, averageRules);
     }
 
     async function refreshStats(){
@@ -2101,6 +2664,22 @@ window.__SUPABASE_ANON_KEY__ = window.__SUPABASE_ANON_KEY__ || "eyJhbGciOiJIUzI1
     $("statsTrendMetric").addEventListener("change", function(){
       savePreferences();
       rerenderStatsIfLoaded();
+    });
+    ["statsAverageExcludeBelow", "statsAverageExcludeAbove"].forEach(function(id){
+      $(id).addEventListener("input", function(){
+        savePreferences();
+        rerenderStatsIfLoaded();
+      });
+    });
+    $all("#trendDayPresets .pillBtn").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        applyTrendDayPreset(btn.getAttribute("data-days") || "all");
+      });
+    });
+    $all("#trendDayFilters .dayToggle").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        toggleTrendDay(btn.getAttribute("data-weekday"));
+      });
     });
     $all("#statsQuickRanges .pillBtn").forEach(function(btn){
       btn.addEventListener("click", function(){

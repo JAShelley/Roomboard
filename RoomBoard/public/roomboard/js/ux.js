@@ -28,23 +28,71 @@
   })();
 
   (function(){
-    var card = document.getElementById("desktopDownloadCard");
-    var link = document.getElementById("desktopDownloadLink");
-    var meta = document.getElementById("desktopDownloadMeta");
-    if(!card || !link) return;
-
-    var url = String(window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__ || "").trim();
-    var filename = String(window.__ROOMBOARD_WINDOWS_DOWNLOAD_FILENAME__ || "RoomBoard-Setup-Windows-x64.exe").trim();
-
-    if(!url){
-      card.style.display = "none";
-      return;
+    function isExternalUrl(url){
+      return /^https?:\/\//i.test(String(url || ""));
     }
 
-    link.href = url;
-    if(filename) link.setAttribute("download", filename);
-    if(meta) meta.textContent = "Direct installer: " + filename;
-    card.style.display = "";
+    function shouldVerifyLocalDownload(url){
+      return !!url && !isExternalUrl(url) && !/^file:/i.test(String(url || ""));
+    }
+
+    function revealDownloadCard(card, link, meta, url, filename){
+      link.href = url;
+      if(filename) link.setAttribute("download", filename);
+      if(meta && filename) meta.textContent = "Direct installer: " + filename;
+      card.style.display = "";
+    }
+
+    function setupDownloadCard(options){
+      var card = document.getElementById(options.cardId);
+      var link = document.getElementById(options.linkId);
+      var meta = document.getElementById(options.metaId);
+      if(!card || !link) return;
+
+      var url = String(options.url || "").trim();
+      var filename = String(options.filename || "").trim();
+
+      if(!url){
+        card.style.display = "none";
+        return;
+      }
+
+      if(shouldVerifyLocalDownload(url) && window.fetch){
+        fetch(url, { method: "HEAD", cache: "no-store" }).then(function(response){
+          if(response && response.ok) revealDownloadCard(card, link, meta, url, filename);
+          else card.style.display = "none";
+        }).catch(function(){
+          card.style.display = "none";
+        });
+        return;
+      }
+
+      revealDownloadCard(card, link, meta, url, filename);
+    }
+
+    setupDownloadCard({
+      cardId: "desktopDownloadCard",
+      linkId: "desktopDownloadLink",
+      metaId: "desktopDownloadMeta",
+      url: window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__,
+      filename: window.__ROOMBOARD_WINDOWS_DOWNLOAD_FILENAME__ || "RoomBoard-Setup-Windows-x64.exe"
+    });
+
+    setupDownloadCard({
+      cardId: "captureDownloadCard",
+      linkId: "captureDownloadLink",
+      metaId: "captureDownloadMeta",
+      url: window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_URL__,
+      filename: window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_FILENAME__ || "RoomBoard-Capture-Setup-Windows-x64.exe"
+    });
+
+    setupDownloadCard({
+      cardId: "captureMacDownloadCard",
+      linkId: "captureMacDownloadLink",
+      metaId: "captureMacDownloadMeta",
+      url: window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_URL__,
+      filename: window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_FILENAME__ || "RoomBoard-Capture-macOS.dmg"
+    });
   })();
 
   function toast(message, options){

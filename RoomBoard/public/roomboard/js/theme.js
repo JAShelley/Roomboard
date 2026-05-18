@@ -385,7 +385,7 @@
       saveLocal();
       if(!supabase || !currentPracticeId) noteSettingsLocalSaved("Saved locally");
       else noteSettingsRemoteQueued("Saving changes…");
-      scheduleRemoteSave("config", { immediate: true });
+      scheduleRemoteSave("userSettings", { immediate: true });
     }
   }
 

@@ -4,7 +4,7 @@ const SETTINGS_KEY = "vetboardMiniOverlaySettings";
 const DEFAULT_SETTINGS = {
   warningMinutes: 20,
   criticalMinutes: 35,
-  autoRefreshMs: 3000,
+  autoRefreshMs: 15000,
   panelOpenByDefault: false
 };
 

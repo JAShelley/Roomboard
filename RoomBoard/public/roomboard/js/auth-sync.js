@@ -95,6 +95,36 @@
       }catch(e){}
     }
 
+	    var statsCoverageTimer = null;
+	    var statsLoggingAvailable = true;
+	    var lastKnownBoardUpdatedAtIso = null;
+	    var lastKnownBoardUpdatedAtMs = 0;
+
+	    function getBoardUpdatedAtMs(updatedAt){
+	      var normalized = normalizeServerNowIso(updatedAt);
+	      if(!normalized) return 0;
+	      var parsed = Date.parse(normalized);
+	      return isFinite(parsed) ? parsed : 0;
+	    }
+
+	    function rememberBoardVersion(updatedAt, options){
+	      options = options || {};
+	      var normalized = normalizeServerNowIso(updatedAt);
+	      if(!normalized) return 0;
+	      var parsed = Date.parse(normalized);
+	      if(!isFinite(parsed)) return 0;
+	      if(parsed >= lastKnownBoardUpdatedAtMs){
+	        lastKnownBoardUpdatedAtMs = parsed;
+	        lastKnownBoardUpdatedAtIso = normalized;
+	      }
+	      return parsed;
+	    }
+
+	    function resetKnownBoardVersion(){
+	      lastKnownBoardUpdatedAtIso = null;
+	      lastKnownBoardUpdatedAtMs = 0;
+	    }
+
     function getSessionTechViewStorageKey(scope){
       return SESSION_TECH_VIEW_KEY_PREFIX + "." + (scope || "guest");
     }
@@ -105,7 +135,8 @@
       var statusLine = $("statusLine");
       if(authBanner){
         authBanner.textContent = currentPracticeName ? currentPracticeName.toUpperCase() : "NOT LOGGED IN";
-        authBanner.hidden = !currentPracticeName;
+        if(typeof applyPracticeNameBadgeVisibility === "function") applyPracticeNameBadgeVisibility();
+        else authBanner.hidden = !currentPracticeName;
       }
       if(clinicLine){
         clinicLine.textContent = currentPracticeName
@@ -117,6 +148,211 @@
       }
     }
 
+    function normalizeInviteCode(value){
+      return String(value == null ? "" : value).toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+    }
+
+	    var authAccessMode = "login";
+	    var currentPracticeInviteAdmin = false;
+
+    function syncLoggedInSummary(){
+      var wrap = $("loggedInSummary");
+      var practiceField = $("loggedInPracticeName");
+      var fullNameField = $("loggedInFullName");
+      var emailField = $("loggedInEmail");
+      var loggedIn = !!currentUserId;
+      if(wrap){
+        wrap.hidden = !loggedIn;
+        wrap.style.display = loggedIn ? "flex" : "none";
+      }
+      if(practiceField) practiceField.value = currentPracticeName || "Not joined yet";
+      if(fullNameField) fullNameField.value = currentUserFullName || "";
+      if(emailField) emailField.value = currentUserEmail || "";
+    }
+
+	    function syncAuthAccessUi(loggedIn, hasPracticeLink){
+	      var modeSwitch = $("authModeSwitch");
+      var createFields = $("authCreateFields");
+      var creds = $("authCredentialsFields");
+      var rememberWrap = $("rememberMe") ? $("rememberMe").parentNode : null;
+      var loginBtn = $("loginBtn");
+      var signupBtn = $("signupBtn");
+      var joinPanel = $("joinPracticePanel");
+      var joinFields = $("joinPracticeFields");
+      var joinActions = $("joinPracticeActions");
+      var inviteBox = $("practiceInviteBox");
+      var inviteActions = $("practiceInviteActions");
+      var inviteStatus = $("practiceInviteCodeStatus");
+
+      if(modeSwitch) modeSwitch.style.display = loggedIn ? "none" : "grid";
+      if(createFields){
+        createFields.hidden = loggedIn || authAccessMode !== "create";
+        createFields.style.display = (loggedIn || authAccessMode !== "create") ? "none" : "grid";
+      }
+      if(creds){
+        creds.hidden = loggedIn;
+        creds.style.display = loggedIn ? "none" : "grid";
+      }
+      if(rememberWrap){
+        rememberWrap.hidden = loggedIn;
+        rememberWrap.style.display = loggedIn ? "none" : "flex";
+      }
+      if(loginBtn) loginBtn.style.display = !loggedIn && authAccessMode === "login" ? "inline-block" : "none";
+      if(signupBtn) signupBtn.style.display = !loggedIn && authAccessMode === "create" ? "inline-block" : "none";
+      if($("logoutBtn")) $("logoutBtn").style.display = loggedIn ? "inline-block" : "none";
+      syncLoggedInSummary();
+
+      if(joinPanel && !loggedIn){
+        joinPanel.style.display = authAccessMode === "login" ? "block" : "none";
+        if(joinFields) joinFields.hidden = false;
+        if(joinActions) joinActions.hidden = false;
+        if(inviteBox) inviteBox.hidden = true;
+        if(inviteActions) inviteActions.hidden = true;
+        if(inviteStatus) inviteStatus.hidden = true;
+	      } else if(joinPanel && !hasPracticeLink) {
+	        joinPanel.style.display = "none";
+	      }
+	    }
+
+	    function canViewStopwatchDiagnostics(){
+	      return !!(currentUserId && currentPracticeId && currentPracticeInviteAdmin);
+	    }
+
+	    function syncStopwatchDiagnosticsUi(){
+	      var panel = $("stopwatchDiagnosticsPanel");
+	      var statusEl = $("stopwatchDiagnosticsStatus");
+	      var summaryEl = $("stopwatchDiagnosticsSummary");
+	      var listEl = $("stopwatchDiagnosticsList");
+	      if(!panel) return;
+	      var canView = canViewStopwatchDiagnostics();
+	      panel.hidden = !canView;
+	      panel.style.display = canView ? "block" : "none";
+	      if(canView) return;
+	      panel.open = false;
+	      if(statusEl) statusEl.textContent = "Clinic admins can open this section to run a stopwatch and stats self-check.";
+	      if(summaryEl) summaryEl.innerHTML = "";
+	      if(listEl) listEl.innerHTML = "";
+	    }
+
+	    window.syncStopwatchDiagnosticsUi = syncStopwatchDiagnosticsUi;
+
+    function setAuthAccessMode(mode){
+      authAccessMode = (mode === "create") ? "create" : "login";
+      var switchWrap = $("authModeSwitch");
+      if(switchWrap){
+        Array.prototype.forEach.call(switchWrap.querySelectorAll(".authModeBtn"), function(btn){
+          btn.classList.toggle("active", btn.getAttribute("data-auth-mode") === authAccessMode);
+        });
+      }
+      syncAuthAccessUi(!!currentUserId, !!currentPracticeId);
+    }
+
+	    function setPracticeInviteUi(details){
+      var panel = $("joinPracticePanel");
+      var panelLabel = $("joinPracticePanelLabel");
+      var panelHelp = $("joinPracticePanelHelp");
+      var joinActions = $("joinPracticeActions");
+      var inviteBox = $("practiceInviteBox");
+      var inviteActions = $("practiceInviteActions");
+      var input = $("practiceInviteCodeDisplay");
+      var status = $("practiceInviteCodeStatus");
+	      var copyBtn = $("copyPracticeInviteCodeBtn");
+	      var rotateBtn = $("rotatePracticeInviteCodeBtn");
+	      var inviteCode = details && details.invite_code ? String(details.invite_code) : "";
+	      currentPracticeInviteAdmin = !!inviteCode;
+	      if(panel) panel.style.display = inviteCode ? "block" : (currentPracticeId ? "none" : "block");
+      if(panelLabel) panelLabel.textContent = inviteCode ? "Clinic invite code" : "Join existing clinic";
+      if(panelHelp) panelHelp.textContent = inviteCode
+        ? "Share this code with staff so they can join the same RoomBoard practice."
+        : "If your clinic already has RoomBoard, create your user here with the clinic invite code.";
+      if(joinActions) joinActions.hidden = !!inviteCode;
+      if(inviteBox) inviteBox.hidden = !inviteCode;
+      if(inviteActions) inviteActions.hidden = !inviteCode;
+      if(input) input.value = inviteCode;
+      if(copyBtn) copyBtn.disabled = !inviteCode;
+      if(rotateBtn) rotateBtn.disabled = !inviteCode;
+      if(status){
+        status.hidden = !inviteCode;
+        status.textContent = inviteCode
+          ? "Share this code with teammates so they can join " + (currentPracticeName || "your clinic") + "."
+          : "Only clinic admins can see and rotate the invite code.";
+	      }
+	      if(!inviteCode) syncAuthAccessUi(!!currentUserId, !!currentPracticeId);
+	      syncStopwatchDiagnosticsUi();
+	    }
+
+    async function refreshPracticeInviteUi(){
+      if(!supabase || !currentPracticeId){
+        setPracticeInviteUi(null);
+        return null;
+      }
+      try{
+        var res = await supabase.rpc("get_my_practice_invite_details");
+        if(res.error) throw res.error;
+        var row = Array.isArray(res.data) ? (res.data[0] || null) : res.data;
+        setPracticeInviteUi(row);
+        return row;
+      }catch(e){
+        setPracticeInviteUi(null);
+        return null;
+      }
+    }
+
+    async function copyTextToClipboard(text){
+      var value = String(text || "");
+      if(!value) return false;
+      try{
+        if(navigator && navigator.clipboard && navigator.clipboard.writeText){
+          await navigator.clipboard.writeText(value);
+          return true;
+        }
+      }catch(e){}
+      var probe = document.createElement("input");
+      probe.type = "text";
+      probe.value = value;
+      document.body.appendChild(probe);
+      probe.select();
+      probe.setSelectionRange(0, value.length);
+      var copied = false;
+      try{
+        copied = document.execCommand("copy");
+      }catch(e){}
+      document.body.removeChild(probe);
+      return copied;
+    }
+
+    function isRetryableJoinSigninError(err){
+      var msg = String(err && (err.message || err.code) || "").toLowerCase();
+      return msg.indexOf("invalid login credentials") >= 0
+        || msg.indexOf("email not confirmed") >= 0
+        || msg.indexOf("invalid_credentials") >= 0
+        || msg.indexOf("user not found") >= 0;
+    }
+
+    async function ensureSessionForJoin(email, password, fullName){
+      var sessionRes = await supabase.auth.getSession();
+      if(sessionRes && sessionRes.data && sessionRes.data.session) return sessionRes.data.session;
+
+      var signInRes = await signInWithPasswordRobust(email, password);
+      if(!(signInRes && signInRes.error)) return signInRes && signInRes.data ? signInRes.data.session : null;
+      if(!isRetryableJoinSigninError(signInRes.error)) throw signInRes.error;
+
+      var signUpRes = await withTimeout(supabase.auth.signUp({
+        email: email,
+        password: password,
+        options: {
+          data: {
+            full_name: fullName
+          }
+        }
+      }), 15000, "Signup");
+      if(signUpRes.error) throw signUpRes.error;
+      if(!(signUpRes.data && signUpRes.data.session && signUpRes.data.user)){
+        throw new Error("Sign up succeeded, but there is no active session yet. Disable email confirmation in Supabase Auth for the immediate clinic join flow.");
+      }
+      return signUpRes.data.session;
+    }
+
     async function fetchClinicContext(){
       if(!supabase) return null;
       var userRes = await supabase.auth.getUser();
@@ -124,27 +360,45 @@
       var user = userRes && userRes.data ? userRes.data.user : null;
       if(!user) return null;
       currentUserId = user.id || null;
+      currentUserEmail = String(user.email || "").trim();
+      currentUserFullName = String(user.user_metadata && user.user_metadata.full_name || "").trim();
 
       var practiceIdRes = await supabase.rpc("get_my_practice_id");
       if(practiceIdRes.error) throw practiceIdRes.error;
 
       var practiceId = normalizePracticeId(practiceIdRes.data);
+      var profileRow = null;
       if(!practiceId){
         var profileRes = await supabase
           .from("profiles")
-          .select("practice_id")
+          .select("practice_id, full_name")
           .eq("user_id", user.id)
           .maybeSingle();
         if(profileRes.error) throw profileRes.error;
-        practiceId = normalizePracticeId(profileRes && profileRes.data ? profileRes.data.practice_id : null);
+        profileRow = profileRes && profileRes.data ? profileRes.data : null;
+        if(profileRow && profileRow.full_name) currentUserFullName = String(profileRow.full_name || "").trim() || currentUserFullName;
+        practiceId = normalizePracticeId(profileRow ? profileRow.practice_id : null);
+      } else {
+        var linkedProfileRes = await supabase
+          .from("profiles")
+          .select("practice_id, full_name")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if(linkedProfileRes.error) throw linkedProfileRes.error;
+        profileRow = linkedProfileRes && linkedProfileRes.data ? linkedProfileRes.data : null;
+        if(profileRow && profileRow.full_name) currentUserFullName = String(profileRow.full_name || "").trim() || currentUserFullName;
       }
 
       if(!practiceId){
         currentPracticeId = null;
         currentPracticeName = "";
         currentUserId = user && user.id ? user.id : null;
+        resetKnownBoardVersion();
         window.__roomboardPracticeId = null;
+        if(typeof window.setLastKnownPracticeId === "function") window.setLastKnownPracticeId(null);
+        updateAuthUI(true);
         updateClinicContextUi();
+        setPracticeInviteUi(null);
         setStatus("Logged in, but no valid clinic practice ID was found for this account.");
         setSyncUI("err", "No clinic");
         return null;
@@ -159,12 +413,16 @@
 
       currentPracticeId = practiceRes.data.id;
       currentPracticeName = practiceRes.data.name || "";
+      resetKnownBoardVersion();
       window.__roomboardPracticeId = currentPracticeId;
+      if(typeof window.setLastKnownPracticeId === "function") window.setLastKnownPracticeId(currentPracticeId);
       lastPracticeConfigSignature = "";
+      updateAuthUI(true);
       updateClinicContextUi();
       if(typeof window.refreshAccountSettingsForSession === "function") window.refreshAccountSettingsForSession();
       if(typeof window.refreshThemePrefsForSession === "function") window.refreshThemePrefsForSession();
       if(typeof window.refreshFeedbackChecklistForSession === "function") window.refreshFeedbackChecklistForSession();
+      refreshPracticeInviteUi();
       return {
         userId: currentUserId,
         practiceId: currentPracticeId,
@@ -225,9 +483,17 @@
     function setAuthBusy(isBusy, statusText){
       var loginBtn = $("loginBtn");
       var signupBtn = $("signupBtn");
+      var joinBtn = $("joinPracticeBtn");
+      var modeSwitch = $("authModeSwitch");
       var logoutBtn = $("logoutBtn");
       if(loginBtn) loginBtn.disabled = !!isBusy;
       if(signupBtn) signupBtn.disabled = !!isBusy;
+      if(joinBtn) joinBtn.disabled = !!isBusy;
+      if(modeSwitch){
+        Array.prototype.forEach.call(modeSwitch.querySelectorAll(".authModeBtn"), function(btn){
+          btn.disabled = !!isBusy;
+        });
+      }
       if(logoutBtn) logoutBtn.disabled = !!isBusy;
       if(statusText) setStatus(statusText);
     }
@@ -361,6 +627,37 @@
       return true;
     }
 
+    var authRecoveryCooldownUntil = 0;
+
+    function hasRecoverableAuthSnapshot(){
+      try{
+        if(typeof hasStoredAuthSessionSnapshot === "function") return hasStoredAuthSessionSnapshot();
+      }catch(e){}
+      try{
+        var localRaw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+        if(localRaw && localRaw !== "null") return true;
+      }catch(e){}
+      try{
+        var sessionRaw = window.sessionStorage.getItem(AUTH_STORAGE_KEY);
+        if(sessionRaw && sessionRaw !== "null") return true;
+      }catch(e){}
+      return false;
+    }
+
+    function clearStoredAuthSessionSnapshot(){
+      try{ window.localStorage.removeItem(AUTH_STORAGE_KEY); }catch(e){}
+      try{ window.sessionStorage.removeItem(AUTH_STORAGE_KEY); }catch(e){}
+    }
+
+    function isTerminalAuthRecoveryError(err){
+      var msg = String(err && (err.message || err.error_description || err.details || err.name) || err || "").toLowerCase();
+      return msg.indexOf("auth session missing") >= 0
+        || msg.indexOf("refresh token not found") >= 0
+        || msg.indexOf("invalid refresh token") >= 0
+        || msg.indexOf("error finding refresh token") >= 0
+        || msg.indexOf("missing refresh token") >= 0;
+    }
+
 	    async function hasAuthenticatedSession(){
 	      if(!supabase) return false;
 	      await refreshSupabaseSessionIfNeeded("session-check");
@@ -371,31 +668,40 @@
 
     async function recoverSupabaseSession(reason){
       if(!supabase) return false;
+      if(!hasRecoverableAuthSnapshot()) return false;
+      if(Date.now() < authRecoveryCooldownUntil) return false;
       if(authRecoveryInFlight) return await authRecoveryInFlight;
       authRecoveryInFlight = (async function(){
-        var attempts = 6;
-        for(var i=0;i<attempts;i++){
-          try{
-            var refreshed = await supabase.auth.refreshSession();
-            if(refreshed && refreshed.error){
-              if(i === attempts - 1) throw refreshed.error;
-            } else if(refreshed && refreshed.data && refreshed.data.session){
-              updateAuthUI(true);
-              return true;
-            }
-          }catch(e){
-            if(i === attempts - 1){
-              console.warn("Session recovery failed (" + (reason || "unknown") + "):", e);
-            }
+        var lastError = null;
+        try{
+          var refreshed = await withTimeout(supabase.auth.refreshSession(), 8000, "Session recovery");
+          if(refreshed && refreshed.error) throw refreshed.error;
+          if(refreshed && refreshed.data && refreshed.data.session){
+            authRecoveryCooldownUntil = 0;
+            updateAuthUI(true);
+            return true;
           }
-          await delay(500 * (i + 1));
-          try{
-            var sess = await supabase.auth.getSession();
-            if(sess && sess.data && sess.data.session){
-              updateAuthUI(true);
-              return true;
-            }
-          }catch(_){}
+        }catch(e){
+          lastError = e;
+        }
+        try{
+          var sess = await supabase.auth.getSession();
+          if(sess && sess.data && sess.data.session){
+            authRecoveryCooldownUntil = 0;
+            updateAuthUI(true);
+            return true;
+          }
+        }catch(e2){
+          if(!lastError) lastError = e2;
+        }
+        if(lastError){
+          console.warn("Session recovery failed (" + (reason || "unknown") + "):", lastError);
+          if(isTerminalAuthRecoveryError(lastError)){
+            clearStoredAuthSessionSnapshot();
+            authRecoveryCooldownUntil = Date.now() + 5 * 60 * 1000;
+          } else {
+            authRecoveryCooldownUntil = Date.now() + 60 * 1000;
+          }
         }
         return false;
       })();
@@ -436,6 +742,21 @@
         && (msg.indexOf("column") >= 0 || msg.indexOf("schema cache") >= 0 || msg.indexOf("could not find") >= 0);
     }
 
+    function isMissingStatsTableError(err){
+      if(!err) return false;
+      if(String(err.code || "") === "42P01") return true;
+      var msg = String(err.message || err.details || err.hint || "").toLowerCase();
+      if(msg.indexOf("does not exist") < 0) return false;
+      return msg.indexOf("room_sessions") >= 0 || msg.indexOf("cleaning_sessions") >= 0;
+    }
+
+    function disableStatsLogging(err){
+      statsLoggingAvailable = false;
+      setStatus("Run the RoomBoard stats SQL so room and cleaning timers count in statistics.");
+      setSyncUI("err", "Stats setup");
+      console.warn("Stats logging disabled until stats tables are installed:", err);
+    }
+
     async function insertStatsSession(tableName, payload){
       var insertRes = await supabase.from(tableName).insert(payload).select("id").single();
       if(!(insertRes && insertRes.error)) return insertRes;
@@ -465,16 +786,38 @@
       return null;
     }
 
-    function persistSessionTrackingState(){
-      saveLocal();
-      if(supabase && currentPracticeId) scheduleRemoteSave("board", { immediate: true });
-    }
+	    function persistSessionTrackingState(){
+	      saveLocal();
+	      if(supabase && currentPracticeId) scheduleRemoteSave("board", { immediate: true });
+	    }
 
-    async function logRoomSessionStart(room){
-      var roomId = "";
-      var pendingToken = "";
-      try{
-        if(!room) return;
+	    function deriveTimerStartedAtIso(timer, fallbackNowIso){
+	      var normalizedNowIso = normalizeServerNowIso(fallbackNowIso) || getEstimatedServerNowIso();
+	      if(timer && timer.startedAtIso){
+	        var normalizedStartedIso = normalizeServerNowIso(timer.startedAtIso);
+	        if(normalizedStartedIso) return normalizedStartedIso;
+	      }
+	      var nowMs = Date.parse(normalizedNowIso);
+	      if(!isFinite(nowMs)) return normalizedNowIso;
+	      var elapsedMs = Math.max(0, Number(computeElapsed(timer, normalizedNowIso) || 0));
+	      if(!elapsedMs) return normalizedNowIso;
+	      return new Date(Math.max(0, nowMs - elapsedMs)).toISOString();
+	    }
+
+	    async function closeStatsSessionById(tableName, sessionId, payload){
+	      if(!sessionId || !isUuidLike(sessionId)) return false;
+	      var updateRes = await supabase.from(tableName).update(payload).eq("id", sessionId);
+	      if(updateRes && updateRes.error) throw updateRes.error;
+	      return true;
+	    }
+
+	    async function logRoomSessionStart(room, options){
+	      var roomId = "";
+	      var pendingToken = "";
+	      try{
+	        options = options || {};
+	        if(!statsLoggingAvailable) return;
+	        if(!room) return;
         roomId = getRoomIdForSessionTracking(room);
         var liveRoom = getLiveRoomForSessionTracking(room);
         if(pendingRoomSessionInsertByRoomId[roomId]) return;
@@ -487,15 +830,16 @@
         if(!await requireAuthenticatedSession("Room session start")) return;
         pendingToken = createPendingSessionToken("room");
         pendingRoomSessionInsertByRoomId[roomId] = pendingToken;
-        var practiceIdForStats = await ensurePracticeContextForStats("room-start");
-        if(!practiceIdForStats && currentPracticeId) practiceIdForStats = currentPracticeId;
-        var payload = {
-          room_name: room.name || room.label || room.id,
-          doctor_name: room.doctor || null,
-          started_at: await getServerNowIso(),
-          ended_at: null,
-          duration_ms: null
-        };
+	        var practiceIdForStats = await ensurePracticeContextForStats("room-start");
+	        if(!practiceIdForStats && currentPracticeId) practiceIdForStats = currentPracticeId;
+	        var startedAtIso = normalizeServerNowIso(options.startedAtIso) || await getServerNowIso();
+	        var payload = {
+	          room_name: room.name || room.label || room.id,
+	          doctor_name: room.doctor || null,
+	          started_at: startedAtIso,
+	          ended_at: null,
+	          duration_ms: null
+	        };
         if(practiceIdForStats) payload.practice_id = practiceIdForStats;
         var res = await insertStatsSession("room_sessions", payload);
         if(res && res.error) throw res.error;
@@ -513,6 +857,10 @@
           }
         }
       } catch(e){
+        if(isMissingStatsTableError(e)){
+          disableStatsLogging(e);
+          return;
+        }
         console.error("logRoomSessionStart failed", e);
         setStatus("Room session start failed: " + getErrorMessage(e));
         setSyncUI("err", "Stats write failed");
@@ -523,6 +871,7 @@
 
     async function logRoomSessionEnd(room, options){
       try{
+        if(!statsLoggingAvailable) return;
         if(!room) return;
         options = options || {};
         var roomId = getRoomIdForSessionTracking(room);
@@ -568,17 +917,23 @@
         if(pendingToken) delete pendingRoomSessionEndSnapshotByToken[pendingToken];
         persistSessionTrackingState();
       } catch(e){
+        if(isMissingStatsTableError(e)){
+          disableStatsLogging(e);
+          return;
+        }
         console.error("logRoomSessionEnd failed", e);
         setStatus("Room session end failed: " + getErrorMessage(e));
         setSyncUI("err", "Stats write failed");
       }
     }
 
-    async function logCleaningSessionStart(room){
-      var roomId = "";
-      var pendingToken = "";
-      try{
-        if(!room) return;
+	    async function logCleaningSessionStart(room, options){
+	      var roomId = "";
+	      var pendingToken = "";
+	      try{
+	        options = options || {};
+	        if(!statsLoggingAvailable) return;
+	        if(!room) return;
         roomId = getRoomIdForSessionTracking(room);
         var liveRoom = getLiveRoomForSessionTracking(room);
         if(pendingCleaningSessionInsertByRoomId[roomId]) return;
@@ -591,14 +946,15 @@
         if(!await requireAuthenticatedSession("Cleaning session start")) return;
         pendingToken = createPendingSessionToken("cleaning");
         pendingCleaningSessionInsertByRoomId[roomId] = pendingToken;
-        var practiceIdForStats = await ensurePracticeContextForStats("cleaning-start");
-        if(!practiceIdForStats && currentPracticeId) practiceIdForStats = currentPracticeId;
-        var payload = {
-          room_name: room.name || room.label || room.id,
-          started_at: await getServerNowIso(),
-          ended_at: null,
-          duration_ms: null
-        };
+	        var practiceIdForStats = await ensurePracticeContextForStats("cleaning-start");
+	        if(!practiceIdForStats && currentPracticeId) practiceIdForStats = currentPracticeId;
+	        var startedAtIso = normalizeServerNowIso(options.startedAtIso) || await getServerNowIso();
+	        var payload = {
+	          room_name: room.name || room.label || room.id,
+	          started_at: startedAtIso,
+	          ended_at: null,
+	          duration_ms: null
+	        };
         if(practiceIdForStats) payload.practice_id = practiceIdForStats;
         var res = await insertStatsSession("cleaning_sessions", payload);
         if(res && res.error) throw res.error;
@@ -616,6 +972,10 @@
           }
         }
       } catch(e){
+        if(isMissingStatsTableError(e)){
+          disableStatsLogging(e);
+          return;
+        }
         console.error("logCleaningSessionStart failed", e);
         setStatus("Cleaning session start failed: " + getErrorMessage(e));
         setSyncUI("err", "Stats write failed");
@@ -626,6 +986,7 @@
 
     async function logCleaningSessionEnd(room, options){
       try{
+        if(!statsLoggingAvailable) return;
         if(!room) return;
         options = options || {};
         var roomId = getRoomIdForSessionTracking(room);
@@ -668,11 +1029,624 @@
         if(pendingToken) delete pendingCleaningSessionEndSnapshotByToken[pendingToken];
         persistSessionTrackingState();
       } catch(e){
+        if(isMissingStatsTableError(e)){
+          disableStatsLogging(e);
+          return;
+        }
         console.error("logCleaningSessionEnd failed", e);
         setStatus("Cleaning session end failed: " + getErrorMessage(e));
         setSyncUI("err", "Stats write failed");
       }
     }
+
+	    function hasCleaningCoverageEvidence(room){
+	      if(!room || !room.needsCleaning) return false;
+	      if(isUuidLike(room.activeCleaningSessionId)) return true;
+	      if(timerHasProgress(room.cleaningTimer)) return true;
+	      if(room.cleaningTimer && room.cleaningTimer.running) return true;
+	      if(normalizeServerNowIso(room.cleaningTimer && room.cleaningTimer.startedAtIso)) return true;
+	      if(room.lastDischargeSnapshot) return true;
+	      return false;
+	    }
+
+	    async function reconcileStatsCoverage(reason){
+	      if(!statsLoggingAvailable || !supabase || !currentPracticeId || !state || !Array.isArray(state.rooms) || !state.rooms.length) return false;
+	      if(!await requireAuthenticatedSession("Stats coverage")) return false;
+	      var coverageNowIso = await getServerNowIso();
+      var changedRoomIds = [];
+      for(var i=0;i<state.rooms.length;i++){
+        var room = state.rooms[i];
+        if(!room) continue;
+	        if(room.needsCleaning){
+	          if(!hasCleaningCoverageEvidence(room)) continue;
+	          if(!timerHasProgress(room.cleaningTimer)){
+	            applyTimerStartAt(room.cleaningTimer, coverageNowIso);
+	            changedRoomIds.push(room.id);
+	          }
+	          if(!room.activeCleaningSessionId) await logCleaningSessionStart(room, {
+	            startedAtIso: deriveTimerStartedAtIso(room.cleaningTimer, coverageNowIso)
+	          });
+	          continue;
+	        }
+	        if(!roomHasAssignedPatient(room)) continue;
+	        if(!timerHasProgress(room.timer)){
+	          applyTimerStartAt(room.timer, coverageNowIso);
+	          changedRoomIds.push(room.id);
+	        }
+	        if(!room.activeRoomSessionId) await logRoomSessionStart(room, {
+	          startedAtIso: deriveTimerStartedAtIso(room.timer, coverageNowIso)
+	        });
+	      }
+      if(changedRoomIds.length){
+        saveLocal();
+        requestBoardRoomRefresh(changedRoomIds, { includeIntake: true, timerBindings: true });
+        scheduleRemoteSave("board", { immediate: true });
+        setStatus((reason || "Timer recovery") + " restored " + changedRoomIds.length + " room timer" + (changedRoomIds.length === 1 ? "" : "s") + ".");
+      }
+      return !!changedRoomIds.length;
+    }
+
+	    function scheduleStatsCoverageCheck(reason){
+	      if(statsCoverageTimer) clearTimeout(statsCoverageTimer);
+	      statsCoverageTimer = setTimeout(function(){
+	        statsCoverageTimer = null;
+	        reconcileStatsCoverage(reason).catch(function(err){
+	          console.warn("Stats coverage check failed:", err);
+	        });
+	      }, 180);
+	    }
+
+	    function normalizeRoomNameKey(name){
+	      return String(name || "").trim().toLowerCase();
+	    }
+
+	    function getStopwatchDiagnosticsSeverity(issue){
+	      if(!issue || !issue.code) return "info";
+	      if(
+	        issue.code === "missing-room-session"
+	        || issue.code === "missing-cleaning-session"
+	        || issue.code === "remote-room-session-missing"
+	        || issue.code === "remote-cleaning-session-missing"
+	        || issue.code === "invalid-room-session-id"
+	        || issue.code === "invalid-cleaning-session-id"
+	      ) return "error";
+	      if(
+	        issue.code === "occupied-no-timer"
+	        || issue.code === "cleaning-no-timer"
+	        || issue.code === "idle-room-session-linked"
+	        || issue.code === "idle-cleaning-session-linked"
+	        || issue.code === "idle-room-timer-progress"
+	        || issue.code === "idle-cleaning-timer-progress"
+	        || issue.code === "orphan-open-room-session"
+	        || issue.code === "orphan-open-cleaning-session"
+	      ) return "warn";
+	      return "info";
+	    }
+
+	    function getStopwatchDiagnosticsIssueLabel(issue){
+	      if(!issue || !issue.code) return "Info";
+	      switch(issue.code){
+	        case "missing-room-session": return "No room session";
+	        case "missing-cleaning-session": return "No cleaning session";
+	        case "remote-room-session-missing": return "Room stats missing";
+	        case "remote-cleaning-session-missing": return "Cleaning stats missing";
+	        case "invalid-room-session-id": return "Bad room session id";
+	        case "invalid-cleaning-session-id": return "Bad cleaning session id";
+	        case "occupied-no-timer": return "Occupied timer idle";
+	        case "cleaning-no-timer": return "Cleaning timer idle";
+	        case "idle-room-session-linked": return "Idle room session link";
+	        case "idle-cleaning-session-linked": return "Idle cleaning session link";
+	        case "idle-room-timer-progress": return "Idle timer progress";
+	        case "idle-cleaning-timer-progress": return "Idle cleaning timer progress";
+	        case "orphan-open-room-session": return "Open room stats orphan";
+	        case "orphan-open-cleaning-session": return "Open cleaning stats orphan";
+	        default: return String(issue.code || "Info");
+	      }
+	    }
+
+	    function describeStopwatchRoomState(room){
+	      if(!room) return "Idle";
+	      if(room.needsCleaning) return "Cleaning";
+	      if(roomHasAssignedPatient(room)) return "Occupied";
+	      if(timerHasProgress(room.timer) || timerHasProgress(room.cleaningTimer)) return "Idle with timer";
+	      return "Idle";
+	    }
+
+	    function formatSessionLinkShort(id){
+	      if(!id) return "None";
+	      var text = String(id);
+	      return text.length > 8 ? text.slice(0, 8) : text;
+	    }
+
+	    async function fetchOpenStatsSessionsForDiagnostics(tableName){
+	      var res = await supabase
+	        .from(tableName)
+	        .select("id, room_name, started_at, duration_ms")
+	        .eq("practice_id", currentPracticeId)
+	        .is("ended_at", null);
+	      if(res.error) throw res.error;
+	      return Array.isArray(res.data) ? res.data : [];
+	    }
+
+	    async function collectStopwatchDiagnosticsSnapshot(){
+	      if(!canViewStopwatchDiagnostics()){
+	        return {
+	          ok: false,
+	          statusText: "Clinic admins can open this section to run a stopwatch and stats self-check.",
+	          summary: null,
+	          rows: []
+	        };
+	      }
+	      if(!statsLoggingAvailable){
+	        return {
+	          ok: false,
+	          statusText: "Run the RoomBoard stats SQL so room and cleaning timers count in statistics.",
+	          summary: null,
+	          rows: []
+	        };
+	      }
+	      if(!await requireAuthenticatedSession("Stopwatch diagnostics")){
+	        return {
+	          ok: false,
+	          statusText: "Log in to run stopwatch diagnostics.",
+	          summary: null,
+	          rows: []
+	        };
+	      }
+	      var openRoomSessions = [];
+	      var openCleaningSessions = [];
+	      try{
+	        var results = await Promise.all([
+	          fetchOpenStatsSessionsForDiagnostics("room_sessions"),
+	          fetchOpenStatsSessionsForDiagnostics("cleaning_sessions")
+	        ]);
+	        openRoomSessions = results[0];
+	        openCleaningSessions = results[1];
+	      }catch(err){
+	        if(isMissingStatsTableError(err)){
+	          disableStatsLogging(err);
+	          return {
+	            ok: false,
+	            statusText: "Run the RoomBoard stats SQL so room and cleaning timers count in statistics.",
+	            summary: null,
+	            rows: []
+	          };
+	        }
+	        throw err;
+	      }
+
+	      var openRoomById = {};
+	      var openCleaningById = {};
+	      var linkedRoomSessionIds = {};
+	      var linkedCleaningSessionIds = {};
+	      openRoomSessions.forEach(function(row){ openRoomById[String(row.id)] = row; });
+	      openCleaningSessions.forEach(function(row){ openCleaningById[String(row.id)] = row; });
+
+	      var rows = [];
+	      var problemRoomCount = 0;
+	      var issueCount = 0;
+	      var activeRoomCount = 0;
+	      var activeCleaningCount = 0;
+
+	      (state.rooms || []).forEach(function(room){
+	        var occupied = roomHasAssignedPatient(room);
+	        var cleaning = !!room.needsCleaning;
+	        var roomTimerMs = computeElapsed(room.timer);
+	        var cleaningTimerMs = computeElapsed(room.cleaningTimer);
+	        var activeRoomSessionId = room.activeRoomSessionId ? String(room.activeRoomSessionId) : "";
+	        var activeCleaningSessionId = room.activeCleaningSessionId ? String(room.activeCleaningSessionId) : "";
+	        var issues = [];
+
+	        if(occupied) activeRoomCount += 1;
+	        if(cleaning) activeCleaningCount += 1;
+
+	        if(activeRoomSessionId){
+	          if(isUuidLike(activeRoomSessionId)){
+	            linkedRoomSessionIds[activeRoomSessionId] = room.name || room.id || "room";
+	            if(!openRoomById[activeRoomSessionId]) issues.push({ code: "remote-room-session-missing" });
+	          } else {
+	            issues.push({ code: "invalid-room-session-id" });
+	          }
+	        }
+	        if(activeCleaningSessionId){
+	          if(isUuidLike(activeCleaningSessionId)){
+	            linkedCleaningSessionIds[activeCleaningSessionId] = room.name || room.id || "room";
+	            if(!openCleaningById[activeCleaningSessionId]) issues.push({ code: "remote-cleaning-session-missing" });
+	          } else {
+	            issues.push({ code: "invalid-cleaning-session-id" });
+	          }
+	        }
+	        if(occupied){
+	          if(!timerHasProgress(room.timer)) issues.push({ code: "occupied-no-timer" });
+	          if(!activeRoomSessionId) issues.push({ code: "missing-room-session" });
+	        } else {
+	          if(activeRoomSessionId) issues.push({ code: "idle-room-session-linked" });
+	          if(roomTimerMs > 0 || (room.timer && room.timer.running)) issues.push({ code: "idle-room-timer-progress" });
+	        }
+	        if(cleaning){
+	          if(!timerHasProgress(room.cleaningTimer)) issues.push({ code: "cleaning-no-timer" });
+	          if(!activeCleaningSessionId) issues.push({ code: "missing-cleaning-session" });
+	        } else {
+	          if(activeCleaningSessionId) issues.push({ code: "idle-cleaning-session-linked" });
+	          if(cleaningTimerMs > 0 || (room.cleaningTimer && room.cleaningTimer.running)) issues.push({ code: "idle-cleaning-timer-progress" });
+	        }
+
+	        var rowSeverity = "ok";
+	        issues.forEach(function(issue){
+	          var severity = getStopwatchDiagnosticsSeverity(issue);
+	          if(severity === "error") rowSeverity = "error";
+	          else if(severity === "warn" && rowSeverity !== "error") rowSeverity = "warn";
+	        });
+	        if(issues.length){
+	          problemRoomCount += 1;
+	          issueCount += issues.length;
+	        }
+
+	        rows.push({
+	          kind: "room",
+	          roomId: getRoomIdForSessionTracking(room),
+	          roomName: room.name || room.label || room.id || "Room",
+	          stateLabel: describeStopwatchRoomState(room),
+	          timerLabel: cleaning ? formatTime(cleaningTimerMs) : formatTime(roomTimerMs),
+	          sessionLabel: cleaning
+	            ? ("Cleaning " + formatSessionLinkShort(activeCleaningSessionId))
+	            : (occupied ? ("Room " + formatSessionLinkShort(activeRoomSessionId)) : "No live session"),
+	          severity: rowSeverity,
+	          issues: issues
+	        });
+	      });
+
+	      openRoomSessions.forEach(function(row){
+	        var id = String(row.id || "");
+	        if(!id || linkedRoomSessionIds[id]) return;
+	        issueCount += 1;
+	        rows.push({
+	          kind: "orphan-room-session",
+	          roomId: "",
+	          roomName: row.room_name || "Unknown room",
+	          stateLabel: "Open room stats row",
+	          timerLabel: row.started_at ? new Date(row.started_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Unknown start",
+	          sessionLabel: "Room " + formatSessionLinkShort(id),
+	          severity: "warn",
+	          issues: [{ code: "orphan-open-room-session" }]
+	        });
+	      });
+	      openCleaningSessions.forEach(function(row){
+	        var id = String(row.id || "");
+	        if(!id || linkedCleaningSessionIds[id]) return;
+	        issueCount += 1;
+	        rows.push({
+	          kind: "orphan-cleaning-session",
+	          roomId: "",
+	          roomName: row.room_name || "Unknown room",
+	          stateLabel: "Open cleaning stats row",
+	          timerLabel: row.started_at ? new Date(row.started_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Unknown start",
+	          sessionLabel: "Cleaning " + formatSessionLinkShort(id),
+	          severity: "warn",
+	          issues: [{ code: "orphan-open-cleaning-session" }]
+	        });
+	      });
+
+	      return {
+	        ok: true,
+	        generatedAtIso: isoNow(),
+	        statusText: issueCount
+	          ? (issueCount + " stopwatch/stat issue" + (issueCount === 1 ? "" : "s") + " detected for " + (currentPracticeName || "this clinic") + ".")
+	          : ("All active room and cleaning timers look covered for " + (currentPracticeName || "this clinic") + "."),
+	        summary: {
+	          activeRooms: activeRoomCount,
+	          activeCleaning: activeCleaningCount,
+	          openRoomSessions: openRoomSessions.length,
+	          openCleaningSessions: openCleaningSessions.length,
+	          problemRooms: problemRoomCount,
+	          issueCount: issueCount
+	        },
+	        rows: rows
+	      };
+	    }
+
+	    function renderStopwatchDiagnostics(snapshot){
+	      var statusEl = $("stopwatchDiagnosticsStatus");
+	      var summaryEl = $("stopwatchDiagnosticsSummary");
+	      var listEl = $("stopwatchDiagnosticsList");
+	      if(statusEl) statusEl.textContent = snapshot && snapshot.statusText ? snapshot.statusText : "Stopwatch self-check unavailable right now.";
+	      if(summaryEl){
+	        if(snapshot && snapshot.summary){
+	          summaryEl.innerHTML = ''
+	            + '<div class="stopwatchDiagnosticsStat"><strong>' + escapeHtml(String(snapshot.summary.activeRooms)) + '</strong><span>Active rooms</span></div>'
+	            + '<div class="stopwatchDiagnosticsStat"><strong>' + escapeHtml(String(snapshot.summary.activeCleaning)) + '</strong><span>Cleaning rooms</span></div>'
+	            + '<div class="stopwatchDiagnosticsStat"><strong>' + escapeHtml(String(snapshot.summary.openRoomSessions + snapshot.summary.openCleaningSessions)) + '</strong><span>Open stats rows</span></div>'
+	            + '<div class="stopwatchDiagnosticsStat"><strong>' + escapeHtml(String(snapshot.summary.issueCount)) + '</strong><span>Issues found</span></div>';
+	        } else {
+	          summaryEl.innerHTML = "";
+	        }
+	      }
+	      if(listEl){
+	        var rows = snapshot && Array.isArray(snapshot.rows) ? snapshot.rows : [];
+	        if(!rows.length){
+	          listEl.innerHTML = '<div class="stopwatchDiagnosticsEmpty">No stopwatch diagnostics to show yet.</div>';
+	        } else {
+	          listEl.innerHTML = rows.map(function(row){
+	            var rowClass = row.severity === "error" ? " isError" : (row.severity === "warn" ? " isWarn" : "");
+	            var issues = Array.isArray(row.issues) ? row.issues : [];
+	            var issueHtml = issues.length
+	              ? issues.map(function(issue){
+	                  var severity = getStopwatchDiagnosticsSeverity(issue);
+	                  var severityClass = severity === "error" ? "isError" : (severity === "warn" ? "isWarn" : (severity === "info" ? "isInfo" : "isOk"));
+	                  return '<span class="stopwatchDiagnosticsBadge ' + severityClass + '">' + escapeHtml(getStopwatchDiagnosticsIssueLabel(issue)) + '</span>';
+	                }).join("")
+	              : '<span class="stopwatchDiagnosticsBadge isOk">Healthy</span>';
+	            return ''
+	              + '<div class="stopwatchDiagnosticsRow' + rowClass + '">'
+	              +   '<div class="stopwatchDiagnosticsPrimary">'
+	              +     '<strong>' + escapeHtml(String(row.roomName || "Room")) + '</strong>'
+	              +     '<div class="stopwatchDiagnosticsMeta">' + escapeHtml(String(row.stateLabel || "")) + '</div>'
+	              +   '</div>'
+	              +   '<div class="stopwatchDiagnosticsTimer">' + escapeHtml(String(row.timerLabel || "00:00:00")) + '</div>'
+	              +   '<div class="stopwatchDiagnosticsSession">' + escapeHtml(String(row.sessionLabel || "")) + '</div>'
+	              +   '<div class="stopwatchDiagnosticsIssues">' + issueHtml + '</div>'
+	              + '</div>';
+	          }).join("");
+	        }
+	      }
+	    }
+
+	    async function runStopwatchDiagnostics(){
+	      try{
+	        renderStopwatchDiagnostics({
+	          ok: false,
+	          statusText: "Running stopwatch self-check…",
+	          summary: null,
+	          rows: []
+	        });
+	        var snapshot = await collectStopwatchDiagnosticsSnapshot();
+	        renderStopwatchDiagnostics(snapshot);
+	        return snapshot;
+	      }catch(err){
+	        console.error("Stopwatch diagnostics failed", err);
+	        renderStopwatchDiagnostics({
+	          ok: false,
+	          statusText: "Stopwatch self-check failed: " + getErrorMessage(err),
+	          summary: null,
+	          rows: []
+	        });
+	        return null;
+	      }
+	    }
+
+	    async function repairStopwatchCoverageDiagnostics(){
+	      renderStopwatchDiagnostics({
+	        ok: false,
+	        statusText: "Repairing stopwatch coverage…",
+	        summary: null,
+	        rows: []
+	      });
+	      try{
+	        if(!canViewStopwatchDiagnostics()){
+	          renderStopwatchDiagnostics({
+	            ok: false,
+	            statusText: "Clinic admins can run stopwatch repairs.",
+	            summary: null,
+	            rows: []
+	          });
+	          return null;
+	        }
+	        if(!statsLoggingAvailable){
+	          renderStopwatchDiagnostics({
+	            ok: false,
+	            statusText: "Run the RoomBoard stats SQL so room and cleaning timers count in statistics.",
+	            summary: null,
+	            rows: []
+	          });
+	          return null;
+	        }
+	        if(!await requireAuthenticatedSession("Stopwatch repair")){
+	          renderStopwatchDiagnostics({
+	            ok: false,
+	            statusText: "Log in to run stopwatch repairs.",
+	            summary: null,
+	            rows: []
+	          });
+	          return null;
+	        }
+	        var repairNowIso = await getServerNowIso();
+	        var sessionRows = await Promise.all([
+	          fetchOpenStatsSessionsForDiagnostics("room_sessions"),
+	          fetchOpenStatsSessionsForDiagnostics("cleaning_sessions")
+	        ]);
+	        var openRoomById = {};
+	        var openCleaningById = {};
+	        (sessionRows[0] || []).forEach(function(row){ openRoomById[String(row.id)] = row; });
+	        (sessionRows[1] || []).forEach(function(row){ openCleaningById[String(row.id)] = row; });
+	        var changedRoomIds = [];
+	        var linkedRoomSessionIds = {};
+	        var linkedCleaningSessionIds = {};
+
+	        function markRoomChanged(room){
+	          if(!room || !room.id) return;
+	          if(changedRoomIds.indexOf(room.id) < 0) changedRoomIds.push(room.id);
+	        }
+
+	        for(var i=0;i<(state.rooms || []).length;i++){
+	          var room = state.rooms[i];
+	          if(!room) continue;
+	          var occupied = roomHasAssignedPatient(room);
+	          var cleaning = !!room.needsCleaning;
+	          var canRepairCleaningCoverage = cleaning && hasCleaningCoverageEvidence(room);
+	          var roomSessionId = room.activeRoomSessionId ? String(room.activeRoomSessionId) : "";
+	          var cleaningSessionId = room.activeCleaningSessionId ? String(room.activeCleaningSessionId) : "";
+
+	          if(roomSessionId && !isUuidLike(roomSessionId)){
+	            room.activeRoomSessionId = null;
+	            roomSessionId = "";
+	            markRoomChanged(room);
+	          }
+	          if(cleaningSessionId && !isUuidLike(cleaningSessionId)){
+	            room.activeCleaningSessionId = null;
+	            cleaningSessionId = "";
+	            markRoomChanged(room);
+	          }
+
+	          if(occupied){
+	            if(cleaningSessionId){
+	              if(openCleaningById[cleaningSessionId]){
+	                await closeStatsSessionById("cleaning_sessions", cleaningSessionId, {
+	                  ended_at: repairNowIso,
+	                  duration_ms: Math.max(0, Number(computeElapsed(room.cleaningTimer, repairNowIso) || 0)),
+	                  room_name: room.name || room.label || room.id
+	                });
+	                delete openCleaningById[cleaningSessionId];
+	              }
+	              room.activeCleaningSessionId = null;
+	              markRoomChanged(room);
+	            }
+	            if(timerHasProgress(room.cleaningTimer)){
+	              applyTimerStopAt(room.cleaningTimer, repairNowIso, true);
+	              markRoomChanged(room);
+	            }
+	            if(!timerHasProgress(room.timer)){
+	              applyTimerStartAt(room.timer, repairNowIso);
+	              markRoomChanged(room);
+	            }
+	            if(roomSessionId && openRoomById[roomSessionId]){
+	              linkedRoomSessionIds[roomSessionId] = room.name || room.id || "room";
+	            } else {
+	              if(roomSessionId){
+	                room.activeRoomSessionId = null;
+	                markRoomChanged(room);
+	              }
+	              await logRoomSessionStart(room, {
+	                startedAtIso: deriveTimerStartedAtIso(room.timer, repairNowIso)
+	              });
+	              if(room.activeRoomSessionId && isUuidLike(room.activeRoomSessionId)){
+	                linkedRoomSessionIds[String(room.activeRoomSessionId)] = room.name || room.id || "room";
+	              }
+	            }
+	            continue;
+	          }
+
+	          if(cleaning && !canRepairCleaningCoverage){
+	            continue;
+	          }
+
+	          if(cleaning && canRepairCleaningCoverage){
+	            if(roomSessionId){
+	              if(openRoomById[roomSessionId]){
+	                await closeStatsSessionById("room_sessions", roomSessionId, {
+	                  ended_at: repairNowIso,
+	                  duration_ms: Math.max(0, Number(computeElapsed(room.timer, repairNowIso) || 0)),
+	                  doctor_name: room.doctor || null,
+	                  room_name: room.name || room.label || room.id
+	                });
+	                delete openRoomById[roomSessionId];
+	              }
+	              room.activeRoomSessionId = null;
+	              markRoomChanged(room);
+	            }
+	            if(timerHasProgress(room.timer)){
+	              applyTimerStopAt(room.timer, repairNowIso, true);
+	              markRoomChanged(room);
+	            }
+	            if(!timerHasProgress(room.cleaningTimer)){
+	              applyTimerStartAt(room.cleaningTimer, repairNowIso);
+	              markRoomChanged(room);
+	            }
+	            if(cleaningSessionId && openCleaningById[cleaningSessionId]){
+	              linkedCleaningSessionIds[cleaningSessionId] = room.name || room.id || "room";
+	            } else {
+	              if(cleaningSessionId){
+	                room.activeCleaningSessionId = null;
+	                markRoomChanged(room);
+	              }
+	              await logCleaningSessionStart(room, {
+	                startedAtIso: deriveTimerStartedAtIso(room.cleaningTimer, repairNowIso)
+	              });
+	              if(room.activeCleaningSessionId && isUuidLike(room.activeCleaningSessionId)){
+	                linkedCleaningSessionIds[String(room.activeCleaningSessionId)] = room.name || room.id || "room";
+	              }
+	            }
+	            continue;
+	          }
+
+	          if(roomSessionId){
+	            if(openRoomById[roomSessionId]){
+	              await closeStatsSessionById("room_sessions", roomSessionId, {
+	                ended_at: repairNowIso,
+	                duration_ms: Math.max(0, Number(computeElapsed(room.timer, repairNowIso) || 0)),
+	                doctor_name: room.doctor || null,
+	                room_name: room.name || room.label || room.id
+	              });
+	              delete openRoomById[roomSessionId];
+	            }
+	            room.activeRoomSessionId = null;
+	            markRoomChanged(room);
+	          }
+	          if(cleaningSessionId){
+	            if(openCleaningById[cleaningSessionId]){
+	              await closeStatsSessionById("cleaning_sessions", cleaningSessionId, {
+	                ended_at: repairNowIso,
+	                duration_ms: Math.max(0, Number(computeElapsed(room.cleaningTimer, repairNowIso) || 0)),
+	                room_name: room.name || room.label || room.id
+	              });
+	              delete openCleaningById[cleaningSessionId];
+	            }
+	            room.activeCleaningSessionId = null;
+	            markRoomChanged(room);
+	          }
+	          if(timerHasProgress(room.timer)){
+	            applyTimerStopAt(room.timer, repairNowIso, true);
+	            markRoomChanged(room);
+	          }
+	          if(timerHasProgress(room.cleaningTimer)){
+	            applyTimerStopAt(room.cleaningTimer, repairNowIso, true);
+	            markRoomChanged(room);
+	          }
+	        }
+
+	        var orphanRoomSessionIds = Object.keys(openRoomById).filter(function(id){
+	          return !linkedRoomSessionIds[id];
+	        });
+	        for(var roomIndex=0; roomIndex<orphanRoomSessionIds.length; roomIndex++){
+	          var orphanRoomId = orphanRoomSessionIds[roomIndex];
+	          var orphanRoomRow = openRoomById[orphanRoomId];
+	          var orphanRoomStartedMs = Date.parse(orphanRoomRow && orphanRoomRow.started_at);
+	          var orphanRoomDuration = isFinite(orphanRoomStartedMs) ? Math.max(0, Date.parse(repairNowIso) - orphanRoomStartedMs) : 0;
+	          await closeStatsSessionById("room_sessions", orphanRoomId, {
+	            ended_at: repairNowIso,
+	            duration_ms: orphanRoomDuration,
+	            doctor_name: null,
+	            room_name: orphanRoomRow && orphanRoomRow.room_name ? orphanRoomRow.room_name : null
+	          });
+	        }
+	        var orphanCleaningSessionIds = Object.keys(openCleaningById).filter(function(id){
+	          return !linkedCleaningSessionIds[id];
+	        });
+	        for(var cleaningIndex=0; cleaningIndex<orphanCleaningSessionIds.length; cleaningIndex++){
+	          var orphanCleaningId = orphanCleaningSessionIds[cleaningIndex];
+	          var orphanCleaningRow = openCleaningById[orphanCleaningId];
+	          var orphanCleaningStartedMs = Date.parse(orphanCleaningRow && orphanCleaningRow.started_at);
+	          var orphanCleaningDuration = isFinite(orphanCleaningStartedMs) ? Math.max(0, Date.parse(repairNowIso) - orphanCleaningStartedMs) : 0;
+	          await closeStatsSessionById("cleaning_sessions", orphanCleaningId, {
+	            ended_at: repairNowIso,
+	            duration_ms: orphanCleaningDuration,
+	            room_name: orphanCleaningRow && orphanCleaningRow.room_name ? orphanCleaningRow.room_name : null
+	          });
+	        }
+	        if(changedRoomIds.length){
+	          saveLocal();
+	          requestBoardRoomRefresh(changedRoomIds, { includeIntake: true, timerBindings: true });
+	          scheduleRemoteSave("board", { immediate: true });
+	        }
+	        await reconcileStatsCoverage("Stopwatch diagnostics");
+	      }catch(err){
+	        console.error("Stopwatch coverage repair failed", err);
+	      }
+	      return await runStopwatchDiagnostics();
+	    }
+
+	    window.runStopwatchDiagnostics = runStopwatchDiagnostics;
+	    window.repairStopwatchCoverageDiagnostics = repairStopwatchCoverageDiagnostics;
+	    window.renderStopwatchDiagnostics = renderStopwatchDiagnostics;
 
     function normalizeServerNowIso(value){
       if(!value) return null;
@@ -735,20 +1709,28 @@
     }
 
 		    function updateAuthUI(loggedIn){
+          var hasPracticeLink = !!currentPracticeId;
 		      $("logoutBtn").style.display = loggedIn ? "inline-block" : "none";
 		      $("loginBtn").style.display = loggedIn ? "none" : "inline-block";
-		      $("signupBtn").style.display = loggedIn ? "none" : "inline-block";
+		      $("signupBtn").style.display = (!loggedIn || !hasPracticeLink) ? "inline-block" : "none";
+          syncAuthAccessUi(loggedIn, hasPracticeLink);
 		      var authBanner = $("authBanner");
 		      if(!loggedIn){
 		        currentPracticeId = null;
 		        currentPracticeName = "";
+	            currentUserEmail = "";
+	            currentUserFullName = "";
+	            currentPracticeInviteAdmin = false;
 		        window.__roomboardPracticeId = null;
+		        if(typeof window.setLastKnownPracticeId === "function") window.setLastKnownPracticeId(null);
 		        activeAccountSettingsScope = "guest";
 		        activeThemePrefsScope = "guest";
             lastPracticeConfigSignature = "";
+            setPracticeInviteUi(null);
 		      }
 		      updateClinicContextUi();
-          if(typeof window.refreshFeedbackChecklistForSession === "function") window.refreshFeedbackChecklistForSession();
+	          syncStopwatchDiagnosticsUi();
+	          if(typeof window.refreshFeedbackChecklistForSession === "function") window.refreshFeedbackChecklistForSession();
 		    }
 
 	    async function refreshSupabaseSessionIfNeeded(reason){
@@ -773,10 +1755,14 @@
 	            return true;
 	          }
 	          return false;
-	        } catch(e){
-	          console.warn("Supabase session refresh skipped (" + (reason || "unknown") + "):", e);
-	          return false;
-	        } finally {
+        } catch(e){
+          if(isTerminalAuthRecoveryError(e)){
+            clearStoredAuthSessionSnapshot();
+            authRecoveryCooldownUntil = Date.now() + 5 * 60 * 1000;
+          }
+          console.warn("Supabase session refresh skipped (" + (reason || "unknown") + "):", e);
+          return false;
+        } finally {
 	          sessionRefreshInFlight = null;
 	        }
 	      })();
@@ -814,19 +1800,22 @@
     }
 
     function serializeTimerForRoomState(timer){
-      timer = timer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null };
+      timer = timer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null };
       var baseElapsedMs = Number(timer.elapsedMs || 0);
       if(!isFinite(baseElapsedMs) || baseElapsedMs < 0) baseElapsedMs = 0;
       var startedAtIso = null;
+      var updatedAtIso = null;
       if(timer.running){
         if(timer.startedAtIso) startedAtIso = String(timer.startedAtIso);
         else if(timer.startedAt) startedAtIso = new Date(timer.startedAt).toISOString();
       }
+      if(timer.updatedAtIso) updatedAtIso = String(timer.updatedAtIso);
       return {
         elapsedMs: computeElapsed(timer),
         baseElapsedMs: baseElapsedMs,
         running: !!timer.running,
-        startedAtIso: startedAtIso
+        startedAtIso: startedAtIso,
+        updatedAtIso: updatedAtIso
       };
     }
 
@@ -839,13 +1828,14 @@
       var running = !!parsed.running;
       var startedAt = null;
       var startedAtIso = null;
+      var updatedAtIso = parsed.updatedAtIso ? normalizeServerNowIso(parsed.updatedAtIso) : null;
       var referenceNowMs = toReferenceNowMs();
       if(running){
         if(parsed.startedAtIso){
           var startedAtMs = Date.parse(parsed.startedAtIso);
           if(isFinite(startedAtMs)){
             startedAt = Math.min(referenceNowMs, startedAtMs);
-            startedAtIso = new Date(startedAtMs).toISOString();
+            startedAtIso = new Date(startedAt).toISOString();
             elapsedMs = baseElapsedMs != null ? baseElapsedMs : (elapsedMs + Math.max(0, referenceNowMs - startedAtMs));
           }
         }
@@ -861,30 +1851,40 @@
         elapsedMs: elapsedMs,
         running: running,
         startedAt: startedAt,
-        startedAtIso: startedAtIso
+        startedAtIso: startedAtIso,
+        updatedAtIso: updatedAtIso
       };
     }
 
     function cloneTimerState(timer){
-      timer = timer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null };
+      timer = timer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null };
       return {
         elapsedMs: Number(timer.elapsedMs || 0),
         running: !!timer.running,
         startedAt: timer.startedAt == null ? null : Number(timer.startedAt),
-        startedAtIso: timer.startedAtIso == null ? null : String(timer.startedAtIso)
+        startedAtIso: timer.startedAtIso == null ? null : String(timer.startedAtIso),
+        updatedAtIso: timer.updatedAtIso == null ? null : String(timer.updatedAtIso)
       };
+    }
+
+    function getTimerUpdateMs(timer){
+      var normalized = normalizeServerNowIso(timer && timer.updatedAtIso);
+      if(!normalized) return 0;
+      var parsed = Date.parse(normalized);
+      return isFinite(parsed) ? parsed : 0;
     }
 
     function normalizeRoomTimerModes(room){
       if(!room) return;
-      room.timer = room.timer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null };
-      room.cleaningTimer = room.cleaningTimer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null };
+      room.timer = room.timer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null };
+      room.cleaningTimer = room.cleaningTimer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null };
 
       if(room.needsCleaning){
         room.timer.elapsedMs = computeElapsed(room.timer);
         room.timer.running = false;
         room.timer.startedAt = null;
         room.timer.startedAtIso = null;
+        if(room.timer.updatedAtIso == null) room.timer.updatedAtIso = null;
         return;
       }
 
@@ -892,18 +1892,21 @@
       room.cleaningTimer.running = false;
       room.cleaningTimer.startedAt = null;
       room.cleaningTimer.startedAtIso = null;
+      if(room.cleaningTimer.updatedAtIso == null) room.cleaningTimer.updatedAtIso = null;
     }
 
-    function getRoomEncounterSignature(room){
-      room = room || {};
-      return JSON.stringify({
+	    function getRoomEncounterSignature(room){
+	      room = room || {};
+	      var quickNotes = getRoomQuickNotes(room);
+	      return JSON.stringify({
         patientName: String(room.patientName || "").trim(),
         reason: String(room.reason || "").trim(),
-        doctor: String(room.doctor || "").trim(),
-        tech: String(room.tech || "").trim(),
-        notes: String(room.notes || "").trim(),
-        quickNote: String(room.quickNote || "").trim(),
-        roomReady: !!room.roomReady,
+	        doctor: String(room.doctor || "").trim(),
+	        tech: String(room.tech || "").trim(),
+	        notes: String(room.notes || "").trim(),
+	        quickNote: quickNotes[0] || "",
+	        quickNotes: quickNotes,
+	        roomReady: !!room.roomReady,
         doctorReady: !!room.doctorReady,
         needsCleaning: !!room.needsCleaning
       });
@@ -914,10 +1917,10 @@
       return !!(
         String(room.patientName || "").trim()
         || String(room.doctor || "").trim()
-        || String(room.tech || "").trim()
-        || String(room.notes || "").trim()
-        || String(room.quickNote || "").trim()
-        || room.roomReady
+	        || String(room.tech || "").trim()
+	        || String(room.notes || "").trim()
+	        || getRoomQuickNotes(room).length
+	        || room.roomReady
         || room.doctorReady
         || room.needsCleaning
         || timerHasProgress(room.timer)
@@ -930,42 +1933,42 @@
       if(!localRoom || !mergedRoom) return;
       var localEncounterSignature = getRoomEncounterSignature(localRoom);
       var mergedEncounterSignature = getRoomEncounterSignature(mergedRoom);
+      if(localEncounterSignature !== mergedEncounterSignature){
+        return;
+      }
+
       var localActiveKey = localRoom.needsCleaning ? "cleaningTimer" : "timer";
       var mergedActiveKey = mergedRoom.needsCleaning ? "cleaningTimer" : "timer";
       var localTimer = localRoom[localActiveKey] || { elapsedMs: 0, running: false, startedAt: null };
       var mergedTimer = mergedRoom[mergedActiveKey] || { elapsedMs: 0, running: false, startedAt: null };
-
-      if(localEncounterSignature !== mergedEncounterSignature){
-        var remoteLooksEmpty = !roomHasMeaningfulBoardState(mergedRoom);
-        var localLooksActive = roomHasMeaningfulBoardState(localRoom);
-        if(localLooksActive && remoteLooksEmpty){
-          applyRoomBoardState(mergedRoom, serializeRoomBoardState(localRoom));
-        }
-        return;
-      }
-
       var localModeMatches = mergedRoom.needsCleaning ? !!localRoom.needsCleaning : !localRoom.needsCleaning;
       if(!localModeMatches) return;
 
       var localElapsed = computeElapsed(localTimer);
       var mergedElapsed = computeElapsed(mergedTimer);
-      if(localTimer.running && (!mergedTimer.running || localElapsed > (mergedElapsed + 1000))){
+      var localUpdatedAtMs = getTimerUpdateMs(localTimer);
+      var mergedUpdatedAtMs = getTimerUpdateMs(mergedTimer);
+      if(localUpdatedAtMs && localUpdatedAtMs > (mergedUpdatedAtMs + 500)){
+        mergedRoom[mergedActiveKey] = cloneTimerState(localTimer);
+      } else if(localTimer.running && (!mergedTimer.running || localElapsed > (mergedElapsed + 1000))){
         mergedRoom[mergedActiveKey] = cloneTimerState(localTimer);
       }
       normalizeRoomTimerModes(mergedRoom);
     }
 
-    function serializeRoomBoardState(room){
-      return {
+	    function serializeRoomBoardState(room){
+	      var quickNotes = getRoomQuickNotes(room);
+	      return {
         patientName: room.patientName || "",
         reason: room.reason || DEFAULT_REASONS[0],
         colorLabelId: room.colorLabelId || getDefaultColorLabelIdFromList(state.colorLabels),
         colorHex: room.colorHex || "",
-        doctor: room.doctor || "",
-        tech: room.tech || "",
-        notes: room.notes || "",
-        quickNote: room.quickNote || "",
-        roomReady: !!room.roomReady,
+	        doctor: room.doctor || "",
+	        tech: room.tech || "",
+	        notes: room.notes || "",
+	        quickNote: quickNotes[0] || "",
+	        quickNotes: quickNotes,
+	        roomReady: !!room.roomReady,
         doctorReady: !!room.doctorReady,
         needsCleaning: !!room.needsCleaning,
         timer: serializeTimerForRoomState(room.timer),
@@ -982,11 +1985,11 @@
       room.reason = String(data.reason || room.reason || DEFAULT_REASONS[0]);
       room.colorLabelId = data.colorLabelId || room.colorLabelId || getDefaultColorLabelIdFromList(state.colorLabels);
       room.colorHex = String(data.colorHex || "");
-      room.doctor = String(data.doctor || "");
-      room.tech = String(data.tech || "");
-      room.notes = String(data.notes || "");
-      room.quickNote = String(data.quickNote || "");
-      room.roomReady = !!data.roomReady;
+	      room.doctor = String(data.doctor || "");
+	      room.tech = String(data.tech || "");
+	      room.notes = String(data.notes || "");
+	      setRoomQuickNotes(room, Array.isArray(data.quickNotes) ? data.quickNotes : (data.quickNote || ""));
+	      room.roomReady = !!data.roomReady;
       room.doctorReady = !!data.doctorReady;
       room.needsCleaning = !!data.needsCleaning;
       room.timer = hydrateTimerFromRoomState(data.timer);
@@ -1052,27 +2055,107 @@
     }
 
     function getRoomBoardSignature(){
-      return JSON.stringify((state && state.rooms ? state.rooms : []).map(function(room, index){
-        return {
-          dbId: String(room && room.dbId || ""),
-          name: String(room && room.name || "").trim(),
-          sort_order: index + 1,
-          board: serializeRoomBoardState(room || {})
-        };
-      }));
+      return getBoardStateSignature(buildBoardStatePayload());
     }
 
-    // ===== Supabase: board_state single source of truth =====
-    function buildBoardStatePayload(){
-      var sourceState = ensureStateShape(state || {});
-      return {
-        rooms: JSON.parse(JSON.stringify(sourceState.rooms || []))
-      };
+		    // ===== Supabase: board_state single source of truth =====
+		    var SHARED_ROOM_CARD_FIELD_KEYS = [
+		      "showRoomCardPatient",
+		      "showRoomCardType",
+		      "showRoomCardDoctorName",
+		      "showRoomCardDoctorBadge",
+		      "showRoomCardTech",
+		      "showRoomCardReady",
+		      "showRoomCardQuickNote",
+		      "showRoomCardStatusNotes"
+		    ];
+
+		    function buildSharedRoomCardFieldsPayload(sourceSettings){
+		      var out = {};
+		      sourceSettings = sourceSettings || {};
+		      for(var i=0;i<SHARED_ROOM_CARD_FIELD_KEYS.length;i++){
+		        var key = SHARED_ROOM_CARD_FIELD_KEYS[i];
+		        out[key] = sourceSettings[key] !== false;
+		      }
+		      return out;
+		    }
+
+		    function applySharedRoomCardFieldsPayload(targetSettings, payload){
+		      if(!targetSettings || !payload || typeof payload !== "object") return;
+		      for(var i=0;i<SHARED_ROOM_CARD_FIELD_KEYS.length;i++){
+		        var key = SHARED_ROOM_CARD_FIELD_KEYS[i];
+		        if(payload[key] != null) targetSettings[key] = payload[key] !== false;
+		      }
+		      if(payload.showRoomCardDoctor != null){
+		        if(payload.showRoomCardDoctorName == null) targetSettings.showRoomCardDoctorName = payload.showRoomCardDoctor !== false;
+		        if(payload.showRoomCardDoctorBadge == null) targetSettings.showRoomCardDoctorBadge = payload.showRoomCardDoctor !== false;
+		      }
+		    }
+
+		    function buildSharedBoardUiPayload(sourceState){
+		      var sourceSettings = sourceState && sourceState.settings ? sourceState.settings : {};
+		      return {
+		        roomCardLineHeight: Math.max(1, Math.min(1.8, Number(sourceSettings.roomCardLineHeight || 1.35))),
+		        doctorInitialBadgeScale: Math.max(0.7, Math.min(2, Number(sourceSettings.doctorInitialBadgeScale || 1))),
+		        doctorInitialBadgeFontSize: Math.max(10, Math.min(28, Number(sourceSettings.doctorInitialBadgeFontSize || 16))),
+		        doctorInitialBadgeColor: String(sourceSettings.doctorInitialBadgeColor || "#0b1220"),
+		        doctorInitialBadgeTextColor: String(sourceSettings.doctorInitialBadgeTextColor || (sourceSettings.displayFontColor || "#e8eefc")),
+		        doctorBadgeStyles: typeof normalizeDoctorBadgeStylesMap === "function"
+		          ? normalizeDoctorBadgeStylesMap(sourceSettings.doctorBadgeStyles)
+		          : (sourceSettings.doctorBadgeStyles || {}),
+		        roomCardFields: buildSharedRoomCardFieldsPayload(sourceSettings)
+		      };
+		    }
+
+	    function applySharedBoardUiPayload(targetState, sharedUi){
+	      if(!targetState || !targetState.settings || !sharedUi || typeof sharedUi !== "object") return;
+	      if(sharedUi.roomCardLineHeight != null) targetState.settings.roomCardLineHeight = Math.max(1, Math.min(1.8, Number(sharedUi.roomCardLineHeight || 1.35)));
+	      if(sharedUi.doctorInitialBadgeScale != null) targetState.settings.doctorInitialBadgeScale = Math.max(0.7, Math.min(2, Number(sharedUi.doctorInitialBadgeScale || 1)));
+	      if(sharedUi.doctorInitialBadgeFontSize != null) targetState.settings.doctorInitialBadgeFontSize = Math.max(10, Math.min(28, Number(sharedUi.doctorInitialBadgeFontSize || 16)));
+	      if(sharedUi.doctorInitialBadgeColor != null) targetState.settings.doctorInitialBadgeColor = String(sharedUi.doctorInitialBadgeColor || "#0b1220");
+	      if(sharedUi.doctorInitialBadgeTextColor != null) targetState.settings.doctorInitialBadgeTextColor = String(sharedUi.doctorInitialBadgeTextColor || (targetState.settings.displayFontColor || "#e8eefc"));
+		      if(sharedUi.doctorBadgeStyles != null) targetState.settings.doctorBadgeStyles = typeof normalizeDoctorBadgeStylesMap === "function"
+		        ? normalizeDoctorBadgeStylesMap(sharedUi.doctorBadgeStyles)
+		        : (sharedUi.doctorBadgeStyles || {});
+		      if(sharedUi.roomCardFields != null) applySharedRoomCardFieldsPayload(targetState.settings, sharedUi.roomCardFields);
+		      else applySharedRoomCardFieldsPayload(targetState.settings, sharedUi);
+		    }
+
+	    function buildBoardStatePayload(){
+	      var sourceState = ensureStateShape(state || {});
+	      return {
+	        rooms: JSON.parse(JSON.stringify(sourceState.rooms || [])),
+	        sharedUi: buildSharedBoardUiPayload(sourceState)
+	      };
+	    }
+
+	    function getBoardStateSignature(boardState){
+	      var normalized = boardState && typeof boardState === "object" ? boardState : {};
+	      return JSON.stringify({
+	        rooms: normalized.rooms || [],
+	        sharedUi: normalized.sharedUi || {}
+	      });
+	    }
+
+	    function getCurrentBoardSignatureWithSharedUi(sharedUi){
+	      return getBoardStateSignature({
+	        rooms: JSON.parse(JSON.stringify(state && state.rooms ? state.rooms : [])),
+	        sharedUi: (sharedUi && typeof sharedUi === "object") ? sharedUi : {}
+	      });
+	    }
+
+    function hasUnsavedLocalBoardChanges(){
+      return !!(state && currentPracticeId && localBoardDirty);
     }
 
-    function getBoardStateSignature(boardState){
-      var normalized = boardState && typeof boardState === "object" ? boardState : {};
-      return JSON.stringify(normalized.rooms || []);
+    function protectUnsavedLocalBoardChanges(statusText){
+      if(!hasUnsavedLocalBoardChanges()) return false;
+      noteBoardActivity("local-board-pending");
+      if(statusText) setSyncUI("syncing", statusText);
+      if(supabase && currentPracticeId && !pendingBoardSave && !saving && !remoteSaveRetryTimer){
+        scheduleRemoteSave("board", { immediate: true });
+      }
+      return true;
     }
 
     function diffBoardRooms(prevRooms, nextRooms){
@@ -1173,16 +2256,19 @@
 
     function applyBoardState(boardState, options){
       options = options || {};
+      var incomingUpdatedAt = options.updatedAt || options.updatedAtIso || null;
+      var incomingUpdatedAtMs = getBoardUpdatedAtMs(incomingUpdatedAt);
       var incoming = boardState && typeof boardState === "object" ? boardState : {};
       var incomingSignature = getBoardStateSignature(incoming);
       if(!options.force && incomingSignature === lastAppliedBoardStateSignature){
         return false;
       }
-      var previousRooms = state && state.rooms ? state.rooms : [];
-      var nextState = ensureStateShape(JSON.parse(JSON.stringify(state || {})));
-      if(Array.isArray(incoming.rooms) && incoming.rooms.length){
-        nextState.rooms = JSON.parse(JSON.stringify(incoming.rooms));
-      }
+	      var previousRooms = state && state.rooms ? state.rooms : [];
+	      var nextState = ensureStateShape(JSON.parse(JSON.stringify(state || {})));
+	      applySharedBoardUiPayload(nextState, incoming.sharedUi);
+	      if(Array.isArray(incoming.rooms) && incoming.rooms.length){
+	        nextState.rooms = JSON.parse(JSON.stringify(incoming.rooms));
+	      }
       nextState = ensureStateShape(nextState);
       var previousRoomsById = Object.create(null);
       for(var i=0;i<previousRooms.length;i++){
@@ -1190,27 +2276,31 @@
           previousRoomsById[String(previousRooms[i].id)] = previousRooms[i];
         }
       }
-      for(var j=0;j<(nextState.rooms || []).length;j++){
-        var nextRoom = nextState.rooms[j];
-        var roomId = String(nextRoom && nextRoom.id || "");
-        var previousRoom = previousRoomsById[roomId];
-        if(previousRoom){
-          if(!isUuidLike(nextRoom.activeRoomSessionId) && isUuidLike(previousRoom.activeRoomSessionId)){
-            nextRoom.activeRoomSessionId = previousRoom.activeRoomSessionId;
-          }
-          if(!isUuidLike(nextRoom.activeCleaningSessionId) && isUuidLike(previousRoom.activeCleaningSessionId)){
-            nextRoom.activeCleaningSessionId = previousRoom.activeCleaningSessionId;
-          }
-        }
-      }
+	      for(var j=0;j<(nextState.rooms || []).length;j++){
+	        var nextRoom = nextState.rooms[j];
+	        var roomId = String(nextRoom && nextRoom.id || "");
+	        var previousRoom = previousRoomsById[roomId];
+	        if(previousRoom){
+	          var pendingRoomInsert = !!pendingRoomSessionInsertByRoomId[roomId];
+	          var pendingCleaningInsert = !!pendingCleaningSessionInsertByRoomId[roomId];
+	          if(pendingRoomInsert && !isUuidLike(nextRoom.activeRoomSessionId) && isUuidLike(previousRoom.activeRoomSessionId)){
+	            nextRoom.activeRoomSessionId = previousRoom.activeRoomSessionId;
+	          }
+	          if(pendingCleaningInsert && !isUuidLike(nextRoom.activeCleaningSessionId) && isUuidLike(previousRoom.activeCleaningSessionId)){
+	            nextRoom.activeCleaningSessionId = previousRoom.activeCleaningSessionId;
+	          }
+	          preserveFresherLocalTimers(previousRoom, nextRoom);
+	        }
+	      }
       var roomDiff = diffBoardRooms(previousRooms, nextState.rooms || []);
       applyAccountSettingsToState(nextState);
       applySessionUiPrefs(nextState);
       state = nextState;
       lastAppliedBoardStateSignature = incomingSignature;
+      if(incomingUpdatedAtMs) rememberBoardVersion(incomingUpdatedAt);
       if(options.skipLocalSave !== true) saveLocal();
       refreshKnownRoomIds(state.rooms);
-      lastRoomBoardSignature = getRoomBoardSignature();
+      lastRoomBoardSignature = getCurrentBoardSignatureWithSharedUi(incoming && incoming.sharedUi);
       if(options.skipUiRefresh !== true){
         if(roomDiff.structureChanged){
           bumpRenderPerf("boardApplyFullRenders");
@@ -1240,7 +2330,10 @@
         .eq("practice_id", practiceId)
         .maybeSingle();
       if(boardRes.error) throw boardRes.error;
-      applyBoardState(boardRes.data && boardRes.data.board_state ? boardRes.data.board_state : {}, { applyTheme: false });
+      applyBoardState(boardRes.data && boardRes.data.board_state ? boardRes.data.board_state : {}, {
+        applyTheme: false,
+        updatedAt: boardRes.data && boardRes.data.updated_at ? boardRes.data.updated_at : null
+      });
       noteBoardActivity("load-board");
       return true;
     }
@@ -1278,6 +2371,7 @@
         .select("updated_at")
         .maybeSingle();
       if(saveRes.error) throw saveRes.error;
+      rememberBoardVersion(saveRes.data && saveRes.data.updated_at ? saveRes.data.updated_at : null);
       noteBoardActivity("save-board");
       return saveRes.data || null;
     }
@@ -1408,7 +2502,6 @@
       refreshKnownRoomIds(state.rooms);
       lastPracticeConfigSignature = getPracticeConfigSignature();
       lastAppointmentTypesSignature = getAppointmentTypesConfigSignature();
-      lastRoomBoardSignature = getRoomBoardSignature();
       if(options.skipUiRefresh === true) return true;
       refreshUiFromState({ applyTheme: !!options.applyTheme, renderSettingsLists: true });
       return true;
@@ -1424,6 +2517,21 @@
       try{
         setSyncUI("syncing", "Loading clinic");
         var localState = ensureStateShape(loadLocal() || null);
+        var persistedSettingsPromise = Promise.all([
+          loadUserSettingsRecord(),
+          loadPracticeDefaultSettingsRecord()
+        ]).then(function(results){
+          return {
+            userSettingsRecord: results[0] || null,
+            practiceDefaultSettingsRecord: results[1] || null
+          };
+        }).catch(function(settingsErr){
+          if(!isMissingSettingsStorageError(settingsErr)) throw settingsErr;
+          return {
+            userSettingsRecord: null,
+            practiceDefaultSettingsRecord: null
+          };
+        });
         var roomsReq = supabase.from("rooms").select("id, name, sort_order, active").eq("practice_id", currentPracticeId).order("sort_order", { ascending: true });
         var doctorsReq = supabase.from("doctors").select("id, name, initials, active").eq("practice_id", currentPracticeId).order("name", { ascending: true });
         var settingsReq = supabase.from("practice_settings").select("practice_id, board_columns, show_only_active, board_view, highlight_doctor_id, default_appointment_type_id").eq("practice_id", currentPracticeId).maybeSingle();
@@ -1437,14 +2545,9 @@
         if(results[3].error) throw results[3].error;
         if(results[4].error) throw results[4].error;
         if(results[5].error) throw results[5].error;
-        var userSettingsRecord = null;
-        var practiceDefaultSettingsRecord = null;
-        try{
-          userSettingsRecord = await loadUserSettingsRecord();
-          practiceDefaultSettingsRecord = await loadPracticeDefaultSettingsRecord();
-        }catch(settingsErr){
-          if(!isMissingSettingsStorageError(settingsErr)) throw settingsErr;
-        }
+        var persistedSettings = await persistedSettingsPromise;
+        var userSettingsRecord = persistedSettings.userSettingsRecord;
+        var practiceDefaultSettingsRecord = persistedSettings.practiceDefaultSettingsRecord;
         state = mergePracticeRowsIntoState(localState, results[0].data || [], results[1].data || [], results[2].data || null, results[3].data || [], results[4].data || []);
         var effectiveSettings = null;
         var shouldSeedUserSettings = false;
@@ -1471,17 +2574,21 @@
             applyTheme: false,
             skipLocalSave: true,
             skipUiRefresh: true,
-            force: true
+            force: true,
+            updatedAt: results[5].data.updated_at || null
           });
         } else {
-          lastAppliedBoardStateSignature = getBoardStateSignature({ rooms: state.rooms || [] });
+          resetKnownBoardVersion();
+          lastAppliedBoardStateSignature = getBoardStateSignature(buildBoardStatePayload());
         }
         saveLocal();
         refreshUiFromState({ applyTheme: true });
         refreshKnownRoomIds(state.rooms);
         lastPracticeConfigSignature = getPracticeConfigSignature();
         lastAppointmentTypesSignature = getAppointmentTypesConfigSignature();
-        lastRoomBoardSignature = getRoomBoardSignature();
+        if(!(results[5].data && results[5].data.board_state)){
+          lastRoomBoardSignature = getRoomBoardSignature();
+        }
         setStatus((currentPracticeName || "Clinic") + " ready.");
         setSyncUI("ok", "Clinic loaded");
         return true;
@@ -1629,6 +2736,26 @@
       return await saveBoard(currentPracticeId, buildBoardStatePayload());
     }
 
+    async function persistDoctorBadgeSettingsSnapshotIfNeeded(){
+      if(!doctorBadgeSettingsDirty) return false;
+      var snapshot = capturePersistentSettingsSnapshot(true);
+      try{
+        await savePracticeDefaultSettingsRecord(snapshot);
+      }catch(err){
+        if(!isMissingSettingsStorageError(err)) console.warn("Saving practice badge settings snapshot failed:", err);
+      }
+      if(currentUserId){
+        try{
+          await saveUserSettingsRecord(snapshot, currentUserId);
+        }catch(err){
+          if(!isMissingSettingsStorageError(err)) console.warn("Saving user badge settings snapshot failed:", err);
+        }
+      }
+      doctorBadgeSettingsDirty = false;
+      noteSettingsRemoteFinished(true, "Saved automatically");
+      return true;
+    }
+
     async function savePracticeSettingsToPractice(doctorRows, appointmentTypeRows){
       var defaultAppointmentTypeId = null;
       var i;
@@ -1651,8 +2778,18 @@
     function scheduleRemoteSave(kind, options){
       options = options || {};
       if(!supabase || !currentPracticeId) return;
-      if(kind === "board") pendingBoardSave = true;
+      if(remoteSaveRetryTimer){
+        clearTimeout(remoteSaveRetryTimer);
+        remoteSaveRetryTimer = null;
+      }
+      remoteSaveRetryCount = 0;
+      if(kind === "board"){
+        pendingBoardSave = true;
+        localBoardDirty = true;
+        noteBoardActivity("queue-board-save");
+      }
       else if(kind === "appointmentTypes") pendingAppointmentTypesSave = true;
+      else if(kind === "userSettings") pendingUserSettingsSave = true;
       else pendingConfigSave = true;
       if(remoteRateLimitUntil > Date.now()){
         if(saveDebounce) clearTimeout(saveDebounce);
@@ -1665,6 +2802,68 @@
         return;
       }
       saveDebounce = setTimeout(flushRemoteSave, kind === "board" ? REMOTE_BOARD_SAVE_DELAY_MS : REMOTE_CONFIG_SAVE_DELAY_MS);
+    }
+
+    function createRetryableSaveError(message){
+      var err = new Error(message || "Save deferred.");
+      err.retryable = true;
+      return err;
+    }
+
+    function clearRemoteSaveRetry(){
+      if(remoteSaveRetryTimer){
+        clearTimeout(remoteSaveRetryTimer);
+        remoteSaveRetryTimer = null;
+      }
+      remoteSaveRetryCount = 0;
+    }
+
+    function isRetryableSaveError(err){
+      if(!err) return false;
+      if(err.retryable) return true;
+      if(isRateLimitError(err)) return true;
+      var status = Number(err.status || err.statusCode || 0);
+      if(status >= 500 && status < 600) return true;
+      var message = String(err.message || err.details || err.hint || err.error_description || "").toLowerCase();
+      return message.indexOf("failed to fetch") >= 0
+        || message.indexOf("fetch failed") >= 0
+        || message.indexOf("network") >= 0
+        || message.indexOf("connection") >= 0
+        || message.indexOf("timed out") >= 0
+        || message.indexOf("timeout") >= 0
+        || message.indexOf("temporar") >= 0
+        || message.indexOf("expired") >= 0
+        || message.indexOf("login required") >= 0
+        || message.indexOf("sign in") >= 0
+        || message.indexOf("session") >= 0;
+    }
+
+    function scheduleRemoteSaveRetry(kinds, statusText, options){
+      kinds = kinds || {};
+      options = options || {};
+      if(kinds.config) pendingConfigSave = true;
+      if(kinds.appointmentTypes) pendingAppointmentTypesSave = true;
+      if(kinds.userSettings) pendingUserSettingsSave = true;
+      if(kinds.board){
+        pendingBoardSave = true;
+        localBoardDirty = true;
+      }
+      var delayMs = Number(options.delayMs);
+      if(!isFinite(delayMs) || delayMs < 0){
+        remoteSaveRetryCount = Math.min(6, remoteSaveRetryCount + 1);
+        delayMs = Math.min(15000, 750 * Math.pow(2, remoteSaveRetryCount - 1));
+      }
+      if(remoteRateLimitUntil > Date.now()){
+        delayMs = Math.max(delayMs, remoteRateLimitUntil - Date.now());
+      }
+      if(remoteSaveRetryTimer) return;
+      if(statusText){
+        setSyncUI("syncing", statusText);
+      }
+      remoteSaveRetryTimer = setTimeout(function(){
+        remoteSaveRetryTimer = null;
+        flushRemoteSave();
+      }, Math.max(400, delayMs));
     }
 
     function isRateLimitError(err){
@@ -1685,36 +2884,38 @@
 
     async function saveClinicConfigData(){
       normalizeSettingsForSave(state);
-      var blockingIssues = getBlockingSettingsIssues(state);
-      if(blockingIssues.length){
-        noteSettingsRemoteFinished(false, "Fix settings first");
-        setStatus(describeSettingsIssuesForStatus(blockingIssues));
-        setSyncUI("err", "Fix settings");
-        return;
-      }
       var nextSignature = getPracticeConfigSignature();
       var nextBoardSignature = getRoomBoardSignature();
       var shouldSaveBoardState = pendingBoardSave || nextBoardSignature !== lastRoomBoardSignature;
-      if(nextSignature === lastPracticeConfigSignature){
-        if(currentUserId){
-          try{
-            await saveUserSettingsRecord(capturePersistentSettingsSnapshot(true), currentUserId);
+      if(nextSignature !== lastPracticeConfigSignature){
+        var blockingIssues = getBlockingSettingsIssues(state);
+        if(blockingIssues.length){
+          noteSettingsRemoteFinished(false, describeSettingsIssuesForSaveState(blockingIssues, "Fix settings first"));
+          setStatus(describeSettingsIssuesForStatus(blockingIssues));
+          setSyncUI("err", "Fix settings");
+          return false;
+        }
+      }
+	      if(nextSignature === lastPracticeConfigSignature){
+	        if(currentUserId){
+	          try{
+	            await saveUserSettingsRecord(capturePersistentSettingsSnapshot(true), currentUserId);
           }catch(settingsErr){
             if(!isMissingSettingsStorageError(settingsErr)) throw settingsErr;
           }
         }
-        if(pendingBoardSave){
-          await saveClinicBoardData();
-          noteSettingsRemoteFinished(true, "Saved automatically");
-          return;
+	        if(shouldSaveBoardState){
+	          await saveClinicBoardData();
+	          noteSettingsRemoteFinished(true, "Saved automatically");
+	          return true;
         }
         setSyncUI("ok", currentPracticeName ? "Clinic ready" : "Guest");
         noteSettingsRemoteFinished(true, "Saved automatically");
-        return;
+        return true;
       }
       if(!await requireAuthenticatedSession("Clinic save")){
         noteSettingsRemoteFinished(false, "Sign in to save");
-        return;
+        throw createRetryableSaveError("Clinic save deferred until sign in.");
       }
       setSyncUI("syncing", "Saving clinic");
       var appointmentTypeRows = await saveAppointmentTypesToPractice();
@@ -1737,13 +2938,14 @@
       if(!shouldSaveBoardState) lastRoomBoardSignature = nextBoardSignature;
       setSyncUI("ok", "Clinic saved");
       noteSettingsRemoteFinished(true, "Saved automatically");
+      return true;
     }
 
     async function saveAppointmentTypesConfigData(){
       normalizeSettingsForSave(state);
-      var blockingIssues = getBlockingSettingsIssues(state);
+      var blockingIssues = getBlockingAppointmentTypeSettingsIssues(state);
       if(blockingIssues.length){
-        noteSettingsRemoteFinished(false, "Fix settings first");
+        noteSettingsRemoteFinished(false, describeSettingsIssuesForSaveState(blockingIssues, "Fix settings first"));
         setStatus(describeSettingsIssuesForStatus(blockingIssues));
         setSyncUI("err", "Fix settings");
         return;
@@ -1756,7 +2958,7 @@
       }
       if(!await requireAuthenticatedSession("Appointment type save")){
         noteSettingsRemoteFinished(false, "Sign in to save");
-        return;
+        throw createRetryableSaveError("Appointment type save deferred until sign in.");
       }
       setSyncUI("syncing", "Saving labels");
       var appointmentTypeRows = await saveAppointmentTypesToPractice();
@@ -1769,15 +2971,45 @@
 
     async function saveClinicBoardData(){
       var nextSignature = getRoomBoardSignature();
-      if(nextSignature === lastRoomBoardSignature){
-        setSyncUI("ok", currentPracticeName ? "Clinic ready" : "Guest");
-        return;
+	      if(nextSignature === lastRoomBoardSignature){
+	        localBoardDirty = false;
+	        await persistDoctorBadgeSettingsSnapshotIfNeeded();
+	        clearRemoteSaveRetry();
+	        setSyncUI("ok", currentPracticeName ? "Clinic ready" : "Guest");
+	        if(settingsRemoteSaveQueued) noteSettingsRemoteFinished(true, "Saved automatically");
+	        return;
+	      }
+      if(!await requireAuthenticatedSession("Board save")){
+        throw createRetryableSaveError("Board save deferred until sign in.");
       }
-      if(!await requireAuthenticatedSession("Board save")) return;
       setSyncUI("syncing", "Saving board");
       await saveBoard(currentPracticeId, buildBoardStatePayload());
       lastRoomBoardSignature = nextSignature;
+      localBoardDirty = false;
+	      await persistDoctorBadgeSettingsSnapshotIfNeeded();
+	      clearRemoteSaveRetry();
       setSyncUI("ok", "Board saved");
+	      if(settingsRemoteSaveQueued) noteSettingsRemoteFinished(true, "Saved automatically");
+	    }
+
+    async function saveUserSettingsData(){
+      normalizeSettingsForSave(state);
+      if(!currentUserId){
+        noteSettingsRemoteFinished(false, "Sign in to save");
+        throw createRetryableSaveError("Settings save deferred until sign in.");
+      }
+      if(!await requireAuthenticatedSession("Settings save")){
+        noteSettingsRemoteFinished(false, "Sign in to save");
+        throw createRetryableSaveError("Settings save deferred until sign in.");
+      }
+      setSyncUI("syncing", "Saving settings");
+      try{
+        await saveUserSettingsRecord(capturePersistentSettingsSnapshot(true), currentUserId);
+      }catch(settingsErr){
+        if(!isMissingSettingsStorageError(settingsErr)) throw settingsErr;
+      }
+      setSyncUI("ok", currentPracticeName ? "Clinic ready" : "Guest");
+      noteSettingsRemoteFinished(true, "Saved automatically");
     }
 
     async function flushRemoteSave(){
@@ -1795,26 +3027,58 @@
       var shouldSaveConfig = pendingConfigSave;
       var shouldSaveAppointmentTypes = pendingAppointmentTypesSave;
       var shouldSaveBoard = pendingBoardSave;
+      var shouldSaveUserSettings = pendingUserSettingsSave;
       pendingConfigSave = false;
       pendingAppointmentTypesSave = false;
       pendingBoardSave = false;
-      if(!shouldSaveConfig && !shouldSaveAppointmentTypes && !shouldSaveBoard) return;
+      pendingUserSettingsSave = false;
+      if(!shouldSaveConfig && !shouldSaveAppointmentTypes && !shouldSaveBoard && !shouldSaveUserSettings) return;
       saving = true;
+      var userSettingsSavedWithConfig = false;
       try{
-        if(shouldSaveConfig) await saveClinicConfigData();
-        else if(shouldSaveAppointmentTypes) await saveAppointmentTypesConfigData();
-        else if(shouldSaveBoard) await saveClinicBoardData();
+        if(shouldSaveConfig){
+          userSettingsSavedWithConfig = await saveClinicConfigData() !== false;
+          shouldSaveConfig = false;
+          shouldSaveAppointmentTypes = false;
+          shouldSaveBoard = false;
+        }
+        else {
+          if(shouldSaveAppointmentTypes){
+            await saveAppointmentTypesConfigData();
+            shouldSaveAppointmentTypes = false;
+          }
+          if(shouldSaveBoard){
+            await saveClinicBoardData();
+            shouldSaveBoard = false;
+          }
+        }
+        if(shouldSaveUserSettings && !userSettingsSavedWithConfig){
+          await saveUserSettingsData();
+          shouldSaveUserSettings = false;
+        }
+        if(userSettingsSavedWithConfig) shouldSaveUserSettings = false;
+        clearRemoteSaveRetry();
       } catch(e){
         console.error("savePracticeData failed:", e);
+        var shouldRetry = isRetryableSaveError(e);
+        if(shouldRetry){
+          scheduleRemoteSaveRetry({
+            config: !!shouldSaveConfig,
+            appointmentTypes: !!shouldSaveAppointmentTypes,
+            board: !!(shouldSaveBoard || localBoardDirty),
+            userSettings: !!(shouldSaveUserSettings && !shouldSaveConfig)
+          }, "Retrying save");
+          setStatus((shouldSaveAppointmentTypes ? "Appointment type save failed. " : shouldSaveConfig ? "Clinic save failed. " : shouldSaveBoard ? "Board save failed. " : "Settings save failed. ") + "Retrying automatically. " + getErrorMessage(e));
+	          if(shouldSaveConfig || shouldSaveAppointmentTypes || shouldSaveUserSettings || settingsRemoteSaveQueued) noteSettingsRemoteQueued("Retrying save…");
+        }
         if(isRateLimitError(e)){
-          pendingConfigSave = pendingConfigSave || shouldSaveConfig;
-          pendingAppointmentTypesSave = pendingAppointmentTypesSave || shouldSaveAppointmentTypes;
-          pendingBoardSave = pendingBoardSave || shouldSaveBoard;
           noteRateLimit();
         }
-        setSyncUI("err", "Save failed");
-        setStatus((shouldSaveAppointmentTypes ? "Appointment type save failed: " : "Clinic save failed: ") + getErrorMessage(e));
-        if(shouldSaveConfig || shouldSaveAppointmentTypes) noteSettingsRemoteFinished(false, "Save failed");
+        if(!shouldRetry){
+          setSyncUI("err", "Save failed");
+          setStatus((shouldSaveAppointmentTypes ? "Appointment type save failed: " : shouldSaveConfig ? "Clinic save failed: " : shouldSaveBoard ? "Board save failed: " : "Settings save failed: ") + getErrorMessage(e));
+	          if(shouldSaveConfig || shouldSaveAppointmentTypes || shouldSaveUserSettings || settingsRemoteSaveQueued) noteSettingsRemoteFinished(false, "Save failed");
+	        }
       } finally {
         saving = false;
         if(__pendingRemoteState){
@@ -1822,7 +3086,7 @@
             flushPendingRemoteRefresh();
           }, 60);
         }
-        if(pendingConfigSave || pendingAppointmentTypesSave || pendingBoardSave){
+        if(pendingConfigSave || pendingAppointmentTypesSave || pendingBoardSave || pendingUserSettingsSave){
           if(saveDebounce) clearTimeout(saveDebounce);
           saveDebounce = setTimeout(flushRemoteSave, 250);
         }
@@ -1831,7 +3095,12 @@
 
     async function savePracticeData(kind){
       if(!supabase || !currentPracticeId) return;
-      if(kind === "board") pendingBoardSave = true;
+      if(kind === "board"){
+        pendingBoardSave = true;
+        localBoardDirty = true;
+      }
+      else if(kind === "appointmentTypes") pendingAppointmentTypesSave = true;
+      else if(kind === "userSettings") pendingUserSettingsSave = true;
       else pendingConfigSave = true;
       await flushRemoteSave();
     }
@@ -1846,6 +3115,7 @@
 
     async function commitBoardNow(options){
       options = options || {};
+      noteBoardActivity("commit-board-now");
       if(options.skipLocalSave !== true) saveLocal();
       await savePracticeData("board");
     }
@@ -1897,6 +3167,7 @@
     async function refreshPracticeDataNow(statusText){
       if(!supabase || !currentPracticeId) return false;
       if(remoteRefreshInFlight) return remoteRefreshInFlight;
+      if(protectUnsavedLocalBoardChanges("Saving local changes")) return false;
       if(remoteRateLimitUntil > Date.now()){
         queuePendingRemoteRefresh(statusText || "Refresh queued", "board");
         if(__interactionReleaseTimer) clearTimeout(__interactionReleaseTimer);
@@ -1926,6 +3197,12 @@
         noteBoardActivity("refresh-board");
         setSyncUI("ok", "Board loaded");
         return true;
+      }).catch(function(e){
+        console.warn("Board refresh failed:", e);
+        if(isRateLimitError(e)) noteRateLimit();
+        else setSyncUI("err", "Refresh failed");
+        setStatus("Board refresh failed. Retrying automatically. " + getErrorMessage(e));
+        return false;
       }).finally(function(){
         remoteRefreshInFlight = null;
       });
@@ -1965,6 +3242,12 @@
         noteBoardActivity("refresh-config");
         setSyncUI("ok", "Settings updated");
         return true;
+      }).catch(function(e){
+        console.warn("Settings refresh failed:", e);
+        if(isRateLimitError(e)) noteRateLimit();
+        else setSyncUI("err", "Settings refresh failed");
+        setStatus("Settings refresh failed. Retrying automatically. " + getErrorMessage(e));
+        return false;
       }).finally(function(){
         remoteConfigRefreshInFlight = null;
       });
@@ -1973,12 +3256,20 @@
 
     function handlePracticeRealtimeChange(tableName, payload){
       if(tableName === "practice_board_state"){
+        if(hasUnsavedLocalBoardChanges()){
+          queuePendingRemoteRefresh("Remote board update", "board");
+          protectUnsavedLocalBoardChanges("Saving local changes");
+          return;
+        }
         if(saving || isUiInteractionLocked()){
           queuePendingRemoteRefresh("Remote board update", "board");
           return;
         }
         var nextBoardState = payload && payload.new ? payload.new.board_state : null;
-        applyBoardState(nextBoardState || {}, { applyTheme: false });
+        applyBoardState(nextBoardState || {}, {
+          applyTheme: false,
+          updatedAt: payload && payload.new && payload.new.updated_at ? payload.new.updated_at : null
+        });
         noteBoardActivity("realtime-board");
         setSyncUI("ok", "Updated");
         return;
@@ -2010,6 +3301,7 @@
     async function recoverStaleDisplay(){
       if(!supabase || !currentPracticeId) return false;
       if(watchdogRecoveryInFlight) return await watchdogRecoveryInFlight;
+      if(protectUnsavedLocalBoardChanges("Saving local changes")) return false;
       watchdogRecoveryInFlight = (async function(){
         try{
           setSyncUI("syncing", "Recovering display");
@@ -2069,27 +3361,46 @@
 		        startSessionKeepAlive();
             startStaleDisplayWatchdog();
 		        // React to login/logout in this tab so clinic-scoped data stays current
-        try{
-          supabase.auth.onAuthStateChange(function(event, session){
-            if(session){
-              updateAuthUI(true);
-              if(authFlowInProgress) return;
-              fetchClinicContext().then(function(){
-                if(typeof window.refreshAccountSettingsForSession === "function") window.refreshAccountSettingsForSession();
-                if(typeof window.refreshThemePrefsForSession === "function") window.refreshThemePrefsForSession();
-                startPracticeRealtime();
-                loadPracticeData();
+	        try{
+	          supabase.auth.onAuthStateChange(function(event, session){
+            var authEvent = String(event || "");
+	            if(session){
+	              updateAuthUI(true);
+	              if(authFlowInProgress) return;
+              if(authEvent === "INITIAL_SESSION") return;
+              if(authEvent === "TOKEN_REFRESHED" || authEvent === "USER_UPDATED"){
+                if(!currentPracticeId){
+                  fetchClinicContext().catch(function(e){
+                    setStatus("Clinic lookup failed: " + getErrorMessage(e));
+                    setSyncUI("err", "Clinic error");
+                  });
+                }
+                return;
+              }
+	              fetchClinicContext().then(function(){
+	                if(typeof window.refreshAccountSettingsForSession === "function") window.refreshAccountSettingsForSession();
+	                if(typeof window.refreshThemePrefsForSession === "function") window.refreshThemePrefsForSession();
+	                startPracticeRealtime();
+	                loadPracticeData();
               }).catch(function(e){
                 setStatus("Clinic lookup failed: " + getErrorMessage(e));
                 setSyncUI("err", "Clinic error");
-              });
-            } else {
-              if(logoutInProgress || String(event || "") === "SIGNED_OUT"){
+	              });
+	            } else {
+              if(authEvent === "INITIAL_SESSION"){
                 updateAuthUI(false);
-                stopPracticeRealtime();
+                setSyncUI("idle", "Guest");
+                return;
+              }
+	              if(logoutInProgress || authEvent === "SIGNED_OUT"){
+	                updateAuthUI(false);
+	                stopPracticeRealtime();
                 currentPracticeId = null;
                 currentPracticeName = "";
                 currentUserId = null;
+                currentUserEmail = "";
+                currentUserFullName = "";
+                resetKnownBoardVersion();
                 window.__roomboardPracticeId = null;
                 if(typeof window.refreshAccountSettingsForSession === "function") window.refreshAccountSettingsForSession(null);
                 if(typeof window.refreshThemePrefsForSession === "function") window.refreshThemePrefsForSession(null);
@@ -2100,15 +3411,23 @@
 	              refreshUiFromState({ applyTheme: true });
 	              setStatus("Log in to load clinic data.");
 	              setSyncUI("idle", "Guest");
+	                return;
+	              }
+              if(!hasRecoverableAuthSnapshot()){
+                updateAuthUI(false);
+                setSyncUI("idle", "Guest");
                 return;
               }
-              recoverSupabaseSession("auth-state-" + String(event || "unknown")).then(function(recovered){
+	              recoverSupabaseSession("auth-state-" + authEvent).then(function(recovered){
                 if(recovered) return;
               updateAuthUI(false);
               stopPracticeRealtime();
               currentPracticeId = null;
               currentPracticeName = "";
               currentUserId = null;
+              currentUserEmail = "";
+              currentUserFullName = "";
+              resetKnownBoardVersion();
               window.__roomboardPracticeId = null;
               if(typeof window.refreshAccountSettingsForSession === "function") window.refreshAccountSettingsForSession(null);
               if(typeof window.refreshThemePrefsForSession === "function") window.refreshThemePrefsForSession(null);
@@ -2124,25 +3443,29 @@
           });
         }catch(e){}
 
-        setRememberMePreference(getRememberMePreference());
-        syncAuthStoragePreference();
-        var sess = await supabase.auth.getSession();
-        if(!(sess && sess.data && sess.data.session) && await recoverSupabaseSession("init")){
-          sess = await supabase.auth.getSession();
-        }
+	        setRememberMePreference(getRememberMePreference());
+	        syncAuthStoragePreference();
+	        var sess = await supabase.auth.getSession();
+	        if(!(sess && sess.data && sess.data.session) && hasRecoverableAuthSnapshot() && await recoverSupabaseSession("init")){
+	          sess = await supabase.auth.getSession();
+	        }
         updateAuthUI(!!(sess && sess.data && sess.data.session));
         if(sess && sess.data && sess.data.session){
-          await getServerNowIso();
+          var serverNowPromise = getServerNowIso().catch(function(){ return null; });
           await fetchClinicContext();
           if(typeof window.refreshAccountSettingsForSession === "function") window.refreshAccountSettingsForSession();
           if(typeof window.refreshThemePrefsForSession === "function") window.refreshThemePrefsForSession();
           startPracticeRealtime();
           await loadPracticeData();
+          await serverNowPromise;
         } else {
           stopPracticeRealtime();
           currentPracticeId = null;
           currentPracticeName = "";
           currentUserId = null;
+          currentUserEmail = "";
+          currentUserFullName = "";
+          resetKnownBoardVersion();
           window.__roomboardPracticeId = null;
           if(typeof window.refreshAccountSettingsForSession === "function") window.refreshAccountSettingsForSession(null);
           if(typeof window.refreshThemePrefsForSession === "function") window.refreshThemePrefsForSession(null);
@@ -2164,22 +3487,28 @@
         var fullName = ($("fullName").value || "").trim();
         var email = ($("email").value || "").trim();
         var password = ($("password").value || "").trim();
-        if(!practiceName || !fullName || !email || !password){
-          alert("Practice name, full name, email, and password are required.");
+        setRememberMePreference(!!($("rememberMe") && $("rememberMe").checked));
+        var existingSession = await supabase.auth.getSession();
+        if(!practiceName || !fullName || (!(existingSession && existingSession.data && existingSession.data.session) && (!email || !password))){
+          alert((existingSession && existingSession.data && existingSession.data.session)
+            ? "Practice name and full name are required."
+            : "Practice name, full name, email, and password are required.");
           return;
         }
-        var res = await withTimeout(supabase.auth.signUp({
-          email: email,
-          password: password,
-          options: {
-            data: {
-              full_name: fullName
+        if(!(existingSession && existingSession.data && existingSession.data.session)){
+          var res = await withTimeout(supabase.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+              data: {
+                full_name: fullName
+              }
             }
+          }), 15000, "Signup");
+          if(res.error) throw res.error;
+          if(!(res.data && res.data.session && res.data.user)){
+            throw new Error("Sign up succeeded, but there is no active session yet. Disable email confirmation in Supabase Auth for the immediate clinic setup flow.");
           }
-        }), 15000, "Signup");
-        if(res.error) throw res.error;
-        if(!(res.data && res.data.session && res.data.user)){
-          throw new Error("Sign up succeeded, but there is no active session yet. Disable email confirmation in Supabase Auth for the immediate clinic setup flow.");
         }
         var rpcRes = null;
         var rpcError = null;
@@ -2209,6 +3538,47 @@
         alert(getErrorMessage(e));
         setStatus("Clinic signup failed: " + getErrorMessage(e));
         setSyncUI("err", "Signup failed");
+      } finally {
+        authFlowInProgress = false;
+        setAuthBusy(false);
+      }
+    }
+
+    async function joinPractice(){
+      try{
+        authFlowInProgress = true;
+        setAuthBusy(true, "Joining clinic…");
+        var fullName = ($("joinFullName").value || "").trim();
+        var email = ($("joinEmail").value || "").trim();
+        var password = ($("joinPassword").value || "").trim();
+        var inviteCode = normalizeInviteCode(($("practiceInviteCode").value || "").trim());
+        setRememberMePreference(!!($("rememberMe") && $("rememberMe").checked));
+        if(!fullName || !email || !password || !inviteCode){
+          alert("Full name, email, password, and invite code are required to join a clinic.");
+          return;
+        }
+        if(!currentPracticeId){
+          await ensureSessionForJoin(email, password, fullName);
+          updateAuthUI(true);
+        }
+        var joinRes = await withTimeout(supabase.rpc("join_practice_with_invite_code", {
+          invite_code: inviteCode,
+          member_full_name: fullName
+        }), 15000, "Join clinic");
+        if(joinRes.error) throw joinRes.error;
+        var joined = Array.isArray(joinRes.data) ? (joinRes.data[0] || null) : joinRes.data;
+        currentPracticeId = joined && joined.practice_id ? joined.practice_id : currentPracticeId;
+        currentPracticeName = joined && joined.practice_name ? joined.practice_name : currentPracticeName;
+        window.__roomboardPracticeId = currentPracticeId;
+        if($("practiceInviteCode")) $("practiceInviteCode").value = inviteCode;
+        updateAuthUI(true);
+        updateClinicContextUi();
+        await withTimeout(finishAuthenticatedFlow({ attempts: 8, waitMs: 250 }), 15000, "Clinic join");
+      }catch(e){
+        console.error("joinPractice failed:", e);
+        alert(getErrorMessage(e));
+        setStatus("Clinic join failed: " + getErrorMessage(e));
+        setSyncUI("err", "Join failed");
       } finally {
         authFlowInProgress = false;
         setAuthBusy(false);
@@ -2252,6 +3622,9 @@
         currentPracticeId = null;
         currentPracticeName = "";
         currentUserId = null;
+        currentUserEmail = "";
+        currentUserFullName = "";
+        resetKnownBoardVersion();
         window.__roomboardPracticeId = null;
         if(typeof window.refreshAccountSettingsForSession === "function") window.refreshAccountSettingsForSession(null);
         if(typeof window.refreshThemePrefsForSession === "function") window.refreshThemePrefsForSession(null);
@@ -2269,8 +3642,54 @@
 	    }
 
     $("signupBtn").addEventListener("click", function(){ if(!supabase) return; signup(); });
+    $("joinPracticeBtn").addEventListener("click", function(){ if(!supabase) return; joinPractice(); });
     $("loginBtn").addEventListener("click", function(){ if(!supabase) return; login(); });
     $("logoutBtn").addEventListener("click", function(){ if(!supabase) return; logout(); });
+    if($("authModeSwitch")){
+      $("authModeSwitch").addEventListener("click", function(e){
+        var btn = e.target && e.target.closest ? e.target.closest(".authModeBtn") : null;
+        if(!btn) return;
+        setAuthAccessMode(btn.getAttribute("data-auth-mode"));
+      });
+      setAuthAccessMode("login");
+    }
+    if($("practiceInviteCode")){
+      $("practiceInviteCode").addEventListener("input", function(){
+        this.value = normalizeInviteCode(this.value);
+      });
+    }
+    if($("copyPracticeInviteCodeBtn")){
+      $("copyPracticeInviteCodeBtn").addEventListener("click", function(){
+        var btn = this;
+        runLockedAction("auth.copy-practice-invite-code", async function(){
+          var code = String($("practiceInviteCodeDisplay") && $("practiceInviteCodeDisplay").value || "").trim();
+          if(!code){
+            setStatus("No invite code is available yet.");
+            return false;
+          }
+          var copied = await copyTextToClipboard(code);
+          setStatus(copied ? "Invite code copied." : "Could not copy invite code.");
+          return copied;
+        }, { el: btn, busyLabel: "Copying…", cooldownMs: 150 });
+      });
+    }
+    if($("rotatePracticeInviteCodeBtn")){
+      $("rotatePracticeInviteCodeBtn").addEventListener("click", function(){
+        var btn = this;
+        runLockedAction("auth.rotate-practice-invite-code", async function(){
+          try{
+            var res = await withTimeout(supabase.rpc("rotate_my_practice_invite_code"), 15000, "Rotate invite code");
+            if(res.error) throw res.error;
+            await refreshPracticeInviteUi();
+            setStatus("Clinic invite code rotated.");
+            return true;
+          }catch(e){
+            setStatus("Invite code rotation failed: " + getErrorMessage(e));
+            return false;
+          }
+        }, { el: btn, busyLabel: "Rotating…", cooldownMs: 250 });
+      });
+    }
     if($("rememberMe")){
       $("rememberMe").checked = getRememberMePreference();
       $("rememberMe").addEventListener("change", function(){

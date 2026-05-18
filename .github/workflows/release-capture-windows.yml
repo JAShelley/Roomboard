@@ -1,0 +1,93 @@
+name: Release Capture Windows Installer
+
+on:
+  push:
+    tags:
+      - "capture-v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to create or update, for example capture-v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-capture-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: RoomBoard/package-lock.json
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install dependencies
+        working-directory: RoomBoard
+        shell: bash
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: RoomBoard
+        shell: bash
+        run: npm run typecheck
+
+      - name: Build Capture Windows installer
+        working-directory: RoomBoard
+        shell: bash
+        run: npm run capture:dist:win
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomboard-capture-release-${{ github.run_number }}
+          path: |
+            RoomBoard/dist-capture/*.exe
+            RoomBoard/dist-capture/*.blockmap
+            RoomBoard/dist-capture/latest*.yml
+          if-no-files-found: error
+
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          assets=(RoomBoard/dist-capture/*.exe RoomBoard/dist-capture/*.blockmap RoomBoard/dist-capture/latest*.yml)
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No capture release assets were generated."
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "RoomBoard Capture $RELEASE_TAG" \
+              --notes "Windows installer build for RoomBoard Capture."
+          fi

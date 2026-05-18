@@ -50,7 +50,15 @@ function uuid(){
       var el = options.el || null;
       var busyLabel = options.busyLabel || "";
       var cooldownMs = Math.max(0, Number(options.cooldownMs || 0));
-      var task = Promise.resolve().then(fn);
+      var task = Promise.resolve().then(fn).catch(function(err){
+        try{ console.error("RoomBoard action failed:", err); }catch(_){}
+        try{
+          var message = (typeof getErrorMessage === "function") ? getErrorMessage(err) : String(err && err.message || err || "Unknown error");
+          setStatus("Action failed: " + message);
+          setSyncUI("err", "Action failed");
+        }catch(_){}
+        return false;
+      });
       if(key) actionLocks[key] = task;
       setElementBusy(el, true, busyLabel);
       return task.then(function(result){
@@ -124,6 +132,14 @@ function uuid(){
       return String(room.doctor || "").trim() === selected;
     }
 
+    function isMobileQuickViewViewport(){
+      return !!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches);
+    }
+
+    function isMobileQuickViewEnabled(){
+      return !!(state && state.settings && state.settings.mobileQuickView && isMobileQuickViewViewport());
+    }
+
 	    function isRoomActiveForDisplay(room){
 	      if(!room) return false;
 	      if(room.needsCleaning) return false;
@@ -136,22 +152,65 @@ function uuid(){
       return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: "base" });
     }
 
+    function getActiveDisplaySortMode(){
+      return (state && state.settings && state.settings.displaySortMode === "time") ? "time" : "room";
+    }
+
+    function compareActiveDisplayRooms(a, b){
+      if(getActiveDisplaySortMode() === "time"){
+        var diff = computeElapsed(b && (b.needsCleaning ? b.cleaningTimer : b.timer)) - computeElapsed(a && (a.needsCleaning ? a.cleaningTimer : a.timer));
+        if(diff !== 0) return diff;
+      }
+      return compareRoomNamesNatural(a, b);
+    }
+
+    function getActiveDisplayDoctorName(room){
+      return String(room && room.doctor || "").trim() || "Unassigned";
+    }
+
+    function compareActiveDisplayDoctorNames(a, b){
+      var nameA = String(a || "");
+      var nameB = String(b || "");
+      var unassignedA = nameA === "Unassigned";
+      var unassignedB = nameB === "Unassigned";
+      if(unassignedA !== unassignedB) return unassignedA ? 1 : -1;
+      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: "base" });
+    }
+
+    function getActiveDisplayDoctorGroups(rooms){
+      var source = Array.isArray(rooms) ? rooms : [];
+      var groupsByDoctor = Object.create(null);
+      var doctorNames = [];
+
+      for(var i=0;i<source.length;i++){
+        var room = source[i];
+        var doctorName = getActiveDisplayDoctorName(room);
+        if(!groupsByDoctor[doctorName]){
+          groupsByDoctor[doctorName] = [];
+          doctorNames.push(doctorName);
+        }
+        groupsByDoctor[doctorName].push(room);
+      }
+
+      doctorNames.sort(compareActiveDisplayDoctorNames);
+      var groups = [];
+      for(var j=0;j<doctorNames.length;j++){
+        groups.push({
+          doctorName: doctorNames[j],
+          rooms: groupsByDoctor[doctorNames[j]]
+        });
+      }
+      return groups;
+    }
+
     function getDisplayRooms(){
       if(!state || !state.rooms) return [];
       var rooms = state.rooms.slice();
+      var quickView = isMobileQuickViewEnabled();
       var onlyActive = !!(state.settings && state.settings.displayOnlyActive);
       if(onlyActive){
         rooms = rooms.filter(isRoomActiveForDisplay);
-        var sortMode = state && state.settings ? state.settings.displaySortMode : "room";
-        if(sortMode === "time"){
-          rooms.sort(function(a, b){
-            var diff = computeElapsed(b && (b.needsCleaning ? b.cleaningTimer : b.timer)) - computeElapsed(a && (a.needsCleaning ? a.cleaningTimer : a.timer));
-            if(diff !== 0) return diff;
-            return compareRoomNamesNatural(a, b);
-          });
-        } else {
-          rooms.sort(compareRoomNamesNatural);
-        }
+        rooms.sort(compareActiveDisplayRooms);
       }
       return rooms;
     }
@@ -186,18 +245,30 @@ function uuid(){
     }
 
     function syncDisplayToolbarControls(){
+      var toolbar = document.querySelector(".right");
       var activeWrap = $("displayOnlyActiveWrap");
       var activeSwitch = $("displayOnlyActiveSwitch");
       var sortWrap = $("displaySortWrap");
       var sortSelect = $("displaySortSelect");
+      var viewToggleBtn = $("viewToggleBtn");
       var onlyActive = !!(state && state.settings && state.settings.displayOnlyActive);
+      var isMobileToolbar = !!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches);
+      var quickViewOn = isMobileQuickViewEnabled();
       if(activeSwitch) activeSwitch.classList.toggle("on", onlyActive);
       if(activeWrap) activeWrap.classList.toggle("isActive", onlyActive);
       if(sortSelect) sortSelect.value = (state && state.settings && state.settings.displaySortMode === "time") ? "time" : "room";
+      if(toolbar) toolbar.classList.toggle("activeSortBeforeToggle", !quickViewOn && onlyActive);
+      if(toolbar) toolbar.classList.toggle("mobileSortExpanded", isMobileToolbar && !quickViewOn && onlyActive);
 	      if(sortWrap){
-	        sortWrap.classList.toggle("isActive", onlyActive && !!(state && state.settings && state.settings.displaySortMode === "time"));
-	        sortWrap.style.display = onlyActive ? "flex" : "none";
+	        sortWrap.classList.remove("isActive");
+	        sortWrap.style.display = (!quickViewOn && onlyActive) ? "flex" : "none";
 	      }
+      if(activeWrap) activeWrap.style.display = "";
+      if(viewToggleBtn){
+        viewToggleBtn.classList.toggle("isActive", quickViewOn);
+        viewToggleBtn.title = quickViewOn ? "Quick view is active on mobile" : "Toggle grid/list";
+        viewToggleBtn.setAttribute("aria-label", viewToggleBtn.title);
+      }
 	    }
 
 	    function rebuildRoomLookup(){
@@ -280,19 +351,27 @@ function uuid(){
 	      bumpRenderPerf("timerBindingRebuilds");
 	      timerBindings = [];
 	      rebuildRoomLookup();
-	      var nodes = document.querySelectorAll("[data-timerText]");
-	      for(var i=0;i<nodes.length;i++){
-	        var node = nodes[i];
-	        var roomId = node.getAttribute("data-room-id");
-	        if(!roomId) continue;
-	        var roomEl = node.closest ? node.closest(".room[data-room-id]") : findTimerRoomElement(node);
-	        if(!roomEl) continue;
-	        timerBindings.push({
-	          node: node,
-	          roomEl: roomEl,
-	          boxEl: node.closest ? node.closest(".timerBox") : null,
-	          labelNode: roomEl.querySelector('[data-timer-label][data-room-id="'+roomId+'"]'),
-	          roomId: roomId,
+		      var nodes = document.querySelectorAll("[data-timerText]");
+		      for(var i=0;i<nodes.length;i++){
+		        var node = nodes[i];
+		        var roomId = node.getAttribute("data-room-id");
+		        if(!roomId) continue;
+		        var roomEl = null;
+		        if(node.closest){
+		          roomEl = node.closest(".room[data-room-id], .mobileQuickViewItem[data-room-id], .mobileQuickViewEmptyTile[data-room-id], .mobileQuickViewPopupCard[data-room-id]");
+		        }
+		        if(!roomEl) roomEl = findTimerRoomElement(node);
+		        if(!roomEl) continue;
+		        var boxEl = null;
+		        if(node.closest){
+		          boxEl = node.closest(".timerBox, .mobileQuickViewTimerBox, .mobileQuickViewPopupTimer");
+		        }
+		        timerBindings.push({
+		          node: node,
+		          roomEl: roomEl,
+		          boxEl: boxEl,
+		          labelNode: roomEl.querySelector('[data-timer-label][data-room-id="'+roomId+'"]'),
+		          roomId: roomId,
 	          lastSecond: null,
 	          lastAlertLevel: null,
 	          lastCleaning: null,
@@ -392,6 +471,7 @@ function uuid(){
       timer.running = true;
       timer.startedAt = isFinite(startedAtMs) ? startedAtMs : null;
       timer.startedAtIso = normalizedStartIso;
+      timer.updatedAtIso = normalizedStartIso;
     }
 
     function applyTimerStopAt(timer, stoppedAtIso, resetElapsed){
@@ -401,6 +481,7 @@ function uuid(){
       timer.running = false;
       timer.startedAt = null;
       timer.startedAtIso = null;
+      timer.updatedAtIso = normalizedStopIso;
     }
 
 	    function hasTimerAlert2(room, elapsedMs){

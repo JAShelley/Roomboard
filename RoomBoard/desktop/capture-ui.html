@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RoomBoard Capture</title>
+  <link rel="stylesheet" href="./capture-ui.css">
+</head>
+<body>
+  <main class="appShell">
+    <header class="appHeader">
+      <div>
+        <div class="eyebrow">RoomBoard</div>
+        <h1>Capture</h1>
+      </div>
+      <button class="iconButton" id="refreshStatusBtn" type="button" title="Refresh status">↻</button>
+    </header>
+
+    <section class="panel">
+      <h2>Connection</h2>
+      <label>
+        RoomBoard website URL
+        <input id="apiBaseInput" placeholder="https://your-roomboard-site.com" type="url">
+      </label>
+      <div class="twoCol">
+        <label>
+          Email
+          <input autocomplete="username" id="emailInput" type="email">
+        </label>
+        <label>
+          Password
+          <input autocomplete="current-password" id="passwordInput" type="password">
+        </label>
+      </div>
+      <div class="actions">
+        <button class="primary" id="loginBtn" type="button">Login</button>
+        <button id="loadBoardBtn" type="button">Load board</button>
+      </div>
+      <div class="statusLine" id="connectionStatus">Not connected.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Appointment Capture</h2>
+      <p class="muted">Press the hotkey or arm capture here, then hover an appointment box and click it.</p>
+      <div class="actions">
+        <button class="primary" id="armCaptureBtn" type="button">Arm capture</button>
+        <button id="stopCaptureBtn" type="button">Cancel</button>
+      </div>
+      <div class="statusLine" id="captureStatus">Ready.</div>
+      <div class="hoverPreview" id="hoverPreview">No appointment under cursor.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Review and Send</h2>
+      <div class="capturePreview" id="capturePreview" hidden>
+        <img alt="Captured appointment preview" id="capturePreviewImage">
+      </div>
+      <label>
+        Patient
+        <input id="patientNameInput" type="text">
+      </label>
+      <label>
+        Appointment type or reason
+        <input id="reasonInput" type="text">
+      </label>
+      <div class="twoCol">
+        <label>
+          Time
+          <input id="timeInput" type="text">
+        </label>
+        <label>
+          Doctor
+          <select id="doctorSelect"></select>
+        </label>
+      </div>
+      <div class="twoCol">
+        <label>
+          Room
+          <select id="roomSelect"></select>
+        </label>
+        <label>
+          RoomBoard type
+          <select id="colorLabelSelect"></select>
+        </label>
+      </div>
+      <div class="twoCol">
+        <label>
+          Tech
+          <input id="techInput" type="text">
+        </label>
+        <label>
+          Quick note
+          <select id="quickNoteSelect"></select>
+        </label>
+      </div>
+      <label>
+        Notes
+        <textarea id="notesInput" rows="4"></textarea>
+      </label>
+      <div class="checkRow">
+        <label><input id="roomReadyInput" type="checkbox"> Room ready</label>
+        <label><input id="doctorReadyInput" type="checkbox"> Doctor ready</label>
+      </div>
+      <div class="actions">
+        <button class="primary" id="sendBtn" type="button">Send to RoomBoard</button>
+        <button id="clearBtn" type="button">Clear</button>
+      </div>
+      <div class="statusLine" id="sendStatus">Capture an appointment to start.</div>
+    </section>
+  </main>
+  <script src="./capture-ui.js"></script>
+</body>
+</html>

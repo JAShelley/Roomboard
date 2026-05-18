@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/primary.swiftdeps"
+  },
+  "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/Sources/RoomBoardCaptureHelper/main.swift": {
+    "dependencies": "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/main.d",
+    "object": "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/main.swift.o",
+    "swiftmodule": "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/main.swiftdeps",
+    "diagnostics": "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/main.dia"
+  }
+}

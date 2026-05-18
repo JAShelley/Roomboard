@@ -11,3 +11,13 @@ window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__ =
   window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__ || "";
 window.__ROOMBOARD_WINDOWS_DOWNLOAD_FILENAME__ =
   window.__ROOMBOARD_WINDOWS_DOWNLOAD_FILENAME__ || "RoomBoard-Setup-Windows-x64.exe";
+window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_URL__ =
+  window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_URL__ ||
+  "./downloads/RoomBoard-Capture-Setup-Windows-x64.exe";
+window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_FILENAME__ =
+  window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_FILENAME__ || "RoomBoard-Capture-Setup-Windows-x64.exe";
+window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_URL__ =
+  window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_URL__ ||
+  "./downloads/RoomBoard-Capture-macOS.dmg";
+window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_FILENAME__ =
+  window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_FILENAME__ || "RoomBoard-Capture-macOS.dmg";

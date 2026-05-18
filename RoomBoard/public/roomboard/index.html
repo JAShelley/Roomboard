@@ -9,7 +9,7 @@
 <meta http-equiv="Expires" content="0">
 <title data-id="th-modified">RoomBoard</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="./styles.css?v=20260419d">
+<link rel="stylesheet" href="./styles.css?v=20260517c">
 <meta property="og:title" content="RoomBoard" data-id="th-modified" ><meta name="description" content="RoomBoard display board website" data-id="th-modified" ><meta property="og:description" content="RoomBoard display board website" data-id="th-modified" ><meta property="og:type" content="website" data-id="th-modified" ></head>
 <body class="displayTabActive"><button aria-label="Back to top" id="toTopBtn" title="Back to top">↑</button>
 <div class="chip" data-state="idle" id="syncPill" title="Sync status">
@@ -21,7 +21,8 @@
 <div class="bar">
 <div class="brandLockup">
 <div class="brandTitleRow">
-<div class="brandWordmark">RoomBoard</div>
+<div class="brandWordmark" id="brandWordmark">RoomBoard</div>
+<img alt="Clinic logo" hidden id="brandLogoImage">
 <div id="authBanner">NOT LOGGED IN</div>
 </div>
 <small id="statusLine">Loading…</small>
@@ -31,18 +32,19 @@
 <span class="headerToggleLabel">Only active</span>
 <div class="switch" id="displayOnlyActiveSwitch"><div class="knob"></div></div>
 </div>
-<div class="headerSelectWrap" id="displaySortWrap">
-<label class="headerSelectLabel" for="displaySortSelect">Sort</label>
-<select id="displaySortSelect">
-<option value="room">Room</option>
-<option value="time">Time</option>
-</select>
-</div>
-<button aria-label="Add or edit a room from Display" class="iconBtn headerIconBtn addHeaderBtn" id="openQuickAddBtn" title="Add or edit a room from Display" type="button">+</button>
-<button aria-label="Enter full screen" class="iconBtn headerIconBtn" id="fullscreenBtn" title="Enter full screen" type="button">⤢</button>
-<button aria-label="Toggle grid/list" class="iconBtn headerIconBtn" id="viewToggleBtn" title="Toggle grid/list" type="button">▦</button>
-<button aria-label="Open settings" class="iconBtn headerIconBtn" id="openSettingsBtn" title="Open settings" type="button">⚙</button>
-</div>
+	<div class="headerSelectWrap" id="displaySortWrap">
+	<label class="headerSelectLabel" for="displaySortSelect">Sort</label>
+	<select id="displaySortSelect">
+	<option value="room">Room</option>
+	<option value="time">Time</option>
+	</select>
+	</div>
+	<button aria-label="Add or edit a room from Display" class="iconBtn headerIconBtn addHeaderBtn" id="openQuickAddBtn" title="Add or edit a room from Display" type="button">+</button>
+	<button aria-label="Toggle mobile quick view" class="iconBtn headerIconBtn mobileQuickViewHeaderBtn" id="toggleMobileQuickViewBtn" title="Toggle mobile quick view" type="button"><span aria-hidden="true" class="headerPhoneIcon"></span></button>
+	<button aria-label="Enter full screen" class="iconBtn headerIconBtn" id="fullscreenBtn" title="Enter full screen" type="button">⤢</button>
+	<button aria-label="Toggle grid/list" class="iconBtn headerIconBtn" id="viewToggleBtn" title="Toggle grid/list" type="button">▦</button>
+	<button aria-label="Open settings" class="iconBtn headerIconBtn" id="openSettingsBtn" title="Open settings" type="button">⚙</button>
+	</div>
 </div>
 </header>
 <main>
@@ -52,13 +54,14 @@
 </div>
 </section>
 </main>
+<div aria-hidden="true" class="mobileQuickViewPopupBackdrop" hidden id="mobileQuickViewPopupBackdrop"></div>
+<section aria-hidden="true" aria-label="Quick room details" class="mobileQuickViewPopup" hidden id="mobileQuickViewPopup"></section>
 <div class="quickAddBackdrop" id="quickAddBackdrop"></div>
 <section aria-label="Quick add" class="quickAddModal" id="quickAddModal">
 <div class="quickAddCard">
 <div class="quickAddHeader">
 <div>
 <h2>Quick Add</h2>
-<p>Update a room from the display board with the core VetBoard fields, plus a room selector.</p>
 </div>
 <button class="btn sm" id="closeQuickAddBtn" type="button">Close</button>
 </div>
@@ -72,7 +75,6 @@
 <div class="drawerEyebrow">RoomBoard</div>
 <div class="drawerTitleGroup">
 <h2>Settings</h2>
-<p>Manage clinic access, rooms, staff, layout, alerts, and display styling from one control panel.</p>
 </div>
 </div>
 <div class="drawerHeaderActions">
@@ -81,19 +83,36 @@
 </div>
 </div>
 <div class="drawerBody">
+<div class="settingsMobileTabPicker">
+<label for="settingsTabSelect">Section</label>
+<select id="settingsTabSelect">
+<option value="tabAccount">Clinic</option>
+<option value="tabRooms">Rooms &amp; Board Setup</option>
+<option value="tabStaff">Staff</option>
+<option value="tabLayout">Display</option>
+<option value="tabAlerts">Timers &amp; Actions</option>
+<option value="tabAppearance">Branding &amp; Theme</option>
+<option value="tabUtilities">Tools</option>
+</select>
+</div>
 <div class="tabs" id="settingsTabs">
-<button class="tabBtn active" data-tab="tabAccount" type="button"><span>Account</span><small>Sync</small></button>
-<button class="tabBtn" data-tab="tabRooms" type="button"><span>Rooms</span><small>Board map</small></button>
-<button class="tabBtn" data-tab="tabStaff" type="button"><span>Staff</span><small>Care team</small></button>
-<button class="tabBtn" data-tab="tabLayout" type="button"><span>Layout</span><small>Screen setup</small></button>
-<button class="tabBtn" data-tab="tabAlerts" type="button"><span>Alerts</span><small>Timers</small></button>
-<button class="tabBtn" data-tab="tabAppearance" type="button"><span>Appearance</span><small>Readability</small></button>
+<button class="tabBtn active" data-tab="tabAccount" type="button"><span>Clinic</span><small>Access</small></button>
+<button class="tabBtn" data-tab="tabRooms" type="button"><span>Rooms &amp; Board Setup</span><small>Rooms, types, notes</small></button>
+<button class="tabBtn" data-tab="tabStaff" type="button"><span>Staff</span><small>Doctors and badges</small></button>
+<button class="tabBtn" data-tab="tabLayout" type="button"><span>Display</span><small>Layout and cards</small></button>
+<button class="tabBtn" data-tab="tabAlerts" type="button"><span>Timers &amp; Actions</span><small>Timers</small></button>
+<button class="tabBtn" data-tab="tabAppearance" type="button"><span>Branding &amp; Theme</span><small>Logo and colors</small></button>
+<button class="tabBtn" data-tab="tabUtilities" type="button"><span>Tools</span><small>Downloads</small></button>
 </div>
 <div class="tabPanel active" id="tabAccount">
 <div class="card">
 <h3>Clinic access</h3>
-<div class="muted">Each clinic can create its own RoomBoard account and sync only its own board.</div>
-<div class="miniRow">
+<div class="muted">Sign in to your clinic account or create a new clinic account for RoomBoard.</div>
+<div class="authModeSwitch" id="authModeSwitch">
+<button class="authModeBtn active" data-auth-mode="login" type="button">Login</button>
+<button class="authModeBtn" data-auth-mode="create" type="button">Create clinic</button>
+</div>
+<div class="miniRow" id="authCreateFields" hidden>
 <div class="field">
 <label>Practice name</label>
 <input autocomplete="organization" id="practiceName" placeholder="Clinic name" type="text">
@@ -103,7 +122,7 @@
 <input autocomplete="name" id="fullName" placeholder="Admin name" type="text">
 </div>
 </div>
-<div class="miniRow">
+<div class="miniRow" id="authCredentialsFields">
 <div class="field">
 <label>Email</label>
 <input autocomplete="username" id="email" placeholder="name@clinic.com" type="text">
@@ -122,48 +141,71 @@
 <button class="btn sm" id="signupBtn" type="button">Create clinic</button>
 <button class="btn sm" id="logoutBtn" style="display:none;" type="button">Logout</button>
 </div>
+<div class="field" hidden id="loggedInSummary">
+<label>Your clinic account</label>
+<div class="miniRow">
+<div class="field">
+<label>Practice name</label>
+<input id="loggedInPracticeName" readonly type="text">
+</div>
+<div class="field">
+<label>Full name</label>
+<input id="loggedInFullName" readonly type="text">
+</div>
+</div>
+<div class="field">
+<label>Email</label>
+<input id="loggedInEmail" readonly type="text">
+</div>
+</div>
 <div class="muted" id="clinicContextLine">Not connected to a clinic yet.</div>
 </div>
-<div class="card">
-<details class="settingsCollapsible" id="settingsScopesBox">
+<details class="settingsCollapsible" id="joinPracticePanel">
 <summary>
-<span>
-<strong>Settings scopes</strong>
-<small>See which changes stay in this window, save as your defaults, or affect the whole clinic.</small>
+<span class="settingsCollapsibleCopy">
+<strong id="joinPracticePanelLabel">Join existing clinic</strong>
+<small id="joinPracticePanelHelp">If your clinic already has RoomBoard, create your user here with the clinic invite code.</small>
 </span>
-<span class="settingsCollapsibleHint">Expand</span>
+<span aria-hidden="true" class="settingsCollapsibleHint"></span>
 </summary>
 <div class="settingsCollapsibleBody">
-<div class="muted">RoomBoard now separates settings by where they should apply so changes are easier to trust.</div>
-<div class="scopeLegend">
-<span class="scopeBadge scopeBadgeWindow">This window</span>
-<span class="scopeBadge scopeBadgePersonal">My defaults</span>
-<span class="scopeBadge scopeBadgeClinic">Clinic-wide</span>
+<div class="miniRow" id="joinPracticeFields">
+<div class="field">
+<label>Full name</label>
+<input autocomplete="name" id="joinFullName" placeholder="Team member name" type="text">
 </div>
-<div class="scopeGrid">
-<div class="scopeItem">
-<strong>This window</strong>
-<div class="muted">Temporary viewing choices like sort mode, active-only filtering, and highlight state.</div>
-</div>
-<div class="scopeItem">
-<strong>My defaults</strong>
-<div class="muted">Personal preferences like theme and personal readability defaults.</div>
-</div>
-<div class="scopeItem">
-<strong>Clinic-wide</strong>
-<div class="muted">Shared operational items like rooms, doctors, color labels, and board sync data.</div>
+<div class="field">
+<label>Email</label>
+<input autocomplete="username" id="joinEmail" placeholder="name@clinic.com" type="text">
 </div>
 </div>
-<div class="actions">
-<a class="btn sm" href="./settings-save-model.md" target="_blank">Open save model</a>
-<a class="btn sm" href="./smoke-test-checklist.md" target="_blank">Open smoke checklist</a>
+<div class="miniRow">
+<div class="field">
+<label>Password</label>
+<input autocomplete="new-password" id="joinPassword" placeholder="password" type="text">
 </div>
+<div class="field">
+<label>Invite code</label>
+<input autocomplete="one-time-code" id="practiceInviteCode" placeholder="Clinic invite code" type="text">
+</div>
+</div>
+<div class="actions" id="joinPracticeActions">
+<button class="btn sm" id="joinPracticeBtn" type="button">Join clinic</button>
+</div>
+<div class="field" hidden id="practiceInviteBox">
+<label>Clinic invite code</label>
+<input id="practiceInviteCodeDisplay" readonly type="text">
+</div>
+<div class="actions" hidden id="practiceInviteActions">
+<button class="btn sm primary" id="copyPracticeInviteCodeBtn" type="button">Copy code</button>
+<button class="btn sm" id="rotatePracticeInviteCodeBtn" type="button">Generate new code</button>
+</div>
+<div class="muted" hidden id="practiceInviteCodeStatus">Only clinic admins can see and rotate the invite code.</div>
 </div>
 </details>
-</div>
 <div class="card">
 <h3>Feedback box</h3>
-<div class="muted">Use this to jot down things that feel confusing, too slow, too much trouble, or things you really like and want more of.</div>
+<div class="muted">Capture friction, ideas, and wins so the team can review them later without leaving RoomBoard.</div>
 <div class="field">
 <label for="feedbackInput">Add checklist item</label>
 <textarea id="feedbackInput" placeholder="Example: Too many clicks to update a room. Or: We love the Quick Add workflow and want more tools like that."></textarea>
@@ -173,112 +215,6 @@
 </div>
 <div class="feedbackChecklist" id="feedbackChecklist"></div>
 <div class="muted" id="feedbackStatusLine">Checklist items are saved on this computer so the team can check them off and remove them later.</div>
-</div>
-<div class="card" id="settingsHealthCard">
-<h3>Save check</h3>
-<div class="muted" id="settingsHealthSummary">RoomBoard checks your settings before it saves them, kind of like a spell-check for setup changes.</div>
-<ul class="settingsHealthList isOk" id="settingsHealthList">
-<li>Everything looks good right now.</li>
-</ul>
-</div>
-<div class="card">
-<h3>Practice defaults</h3>
-<div class="muted">Save this clinic's current layout and appearance defaults for new tabs and future sessions.</div>
-<div class="actions">
-<button class="btn sm primary" id="savePracticeDefaultsBtn" type="button">Save as Default</button>
-</div>
-</div>
-<div class="card">
-<h3>Backup and restore</h3>
-<div class="muted">Export the current clinic configuration to JSON or import a previously exported RoomBoard backup.</div>
-<div class="actions">
-<button class="btn sm" id="exportClinicConfigBtn" type="button">Export config</button>
-<button class="btn sm" id="importClinicConfigBtn" type="button">Import config</button>
-</div>
-<input accept=".json,application/json" hidden id="importClinicConfigFile" type="file">
-</div>
-<div class="card">
-<h3>Pulse addon download</h3>
-<div class="muted">Download the packaged Pulse browser addon from this same folder.</div>
-<div class="actions">
-<a class="btn sm" download href="pulse-vetboard-addon.zip" style="text-decoration:none;" target="_blank">Pulse addon zip</a>
-</div>
-<label>Help</label>
-<details style="border:1px solid var(--settingsBorder); border-radius:14px; background:rgba(255,255,255,.03); padding:10px 12px;">
-<summary style="cursor:pointer; font-weight:700; color:var(--settingsText);">Show Pulse addon install and update instructions</summary>
-<div class="muted" style="line-height:1.55; margin-top:12px;">
-<strong style="color:var(--settingsText);">What this does</strong><br>
-This add-on lets you use RoomBoard tools directly inside your browser.<br><br>
-<strong style="color:var(--settingsText);">Step 1: Download the add-on</strong><br>
-Click the “Download Add-On” button. A file will be saved to your computer (it may look like a zipped file).<br><br>
-<strong style="color:var(--settingsText);">Step 2: Open your Downloads folder</strong><br>
-Open your Downloads and find the file you just downloaded.<br><br>
-<strong style="color:var(--settingsText);">Step 3: Unzip the file</strong><br>
-Right-click the file and select:<br>
-“Extract” (Windows)<br>
-“Open” or “Unzip” (Mac)<br>
-This will create a new folder.<br><br>
-<strong style="color:var(--settingsText);">Step 4: Move the folder to your Desktop</strong><br>
-Click and drag the unzipped folder onto your Desktop so it is easy to find.<br><br>
-<strong style="color:var(--settingsText);">Step 5: Open Chrome extensions</strong><br>
-Open Google Chrome.<br>
-Click the address bar at the top, type: <code>chrome://extensions</code><br>
-Press Enter.<br><br>
-<strong style="color:var(--settingsText);">Step 6: Turn on Developer Mode</strong><br>
-In the top right corner of the page, turn on “Developer Mode.”<br><br>
-<strong style="color:var(--settingsText);">Step 7: Add the add-on</strong><br>
-Click “Load unpacked.”<br>
-Select the folder you moved to your Desktop.<br>
-Click Open.<br><br>
-<strong style="color:var(--settingsText);">You’re done</strong><br>
-The add-on is now installed and ready to use.<br><br>
-<strong style="color:var(--settingsText);">Troubleshooting</strong><br>
-If it doesn’t work:<br>
-Make sure you unzipped the file<br>
-Make sure you selected the folder, not the zip file<br>
-Make sure you are using Google Chrome<br><br>
-<strong style="color:var(--settingsText);">How to Update the RoomBoard Add-On</strong><br><br>
-<strong style="color:var(--settingsText);">What this does</strong><br>
-This updates your add-on to the newest version.<br><br>
-<strong style="color:var(--settingsText);">Step 1: Download the updated add-on</strong><br>
-Click the “Download Add-On” button. A file will be saved to your computer (it may look like a zipped file).<br><br>
-<strong style="color:var(--settingsText);">Step 2: Open your Downloads folder</strong><br>
-Open your Downloads and find the file you just downloaded.<br><br>
-<strong style="color:var(--settingsText);">Step 3: Unzip the file</strong><br>
-Right-click the file and select:<br>
-“Extract” (Windows)<br>
-“Open” or “Unzip” (Mac)<br>
-This will create a new folder.<br><br>
-<strong style="color:var(--settingsText);">Step 4: Move the folder to your Desktop</strong><br>
-Click and drag the unzipped folder onto your Desktop.<br><br>
-<strong style="color:var(--settingsText);">Step 5: Replace the old folder</strong><br>
-If you already have a RoomBoard folder on your Desktop:<br><br>
-Drag the new folder onto the Desktop<br>
-When asked, click “Replace” (Windows) or “Replace” / “Merge” (Mac)<br><br>
-<strong style="color:var(--settingsText);">Step 6: Reload the add-on</strong><br>
-Open Google Chrome.<br>
-Type: <code>chrome://extensions</code> in the address bar and press Enter.<br>
-Find the RoomBoard add-on and click the Reload button.<br><br>
-<strong style="color:var(--settingsText);">Step 7: Refresh your page</strong><br>
-Go back to your webpage and refresh it.<br><br>
-<strong style="color:var(--settingsText);">You’re done</strong><br>
-The add-on is now updated and ready to use.<br><br>
-<strong style="color:var(--settingsText);">Troubleshooting</strong><br>
-If it doesn’t update:<br>
-Make sure you replaced the old folder<br>
-Make sure you clicked Reload on the extension<br>
-Try refreshing the webpage again<br>
-Make sure you are using Google Chrome<br>
-</div>
-</details>
-</div>
-<div class="card" id="desktopDownloadCard" style="display:none;">
-<h3>Windows app download</h3>
-<div class="muted">Install RoomBoard as a standalone Windows app instead of opening it in a browser tab.</div>
-<div class="actions">
-<a class="btn sm primary" href="#" id="desktopDownloadLink" rel="noopener" style="text-decoration:none;" target="_blank">Download RoomBoard for Windows</a>
-</div>
-<div class="muted" id="desktopDownloadMeta"></div>
 </div>
 </div>
 <div class="tabPanel" id="tabRooms">
@@ -298,7 +234,7 @@ Make sure you are using Google Chrome<br>
 <div id="roomsList"></div>
 </div>
 <div class="card">
-<h3>Color labels</h3>
+<h3>Types &amp; color labels</h3>
 <div class="muted">These populate the Color dropdown.</div>
 <div class="miniRow">
 <div class="field">
@@ -325,6 +261,21 @@ Make sure you are using Google Chrome<br>
 </div>
 <div id="colorsList"></div>
 </div>
+<div class="card">
+<h3>Quick notes</h3>
+<div class="muted">Manage the shared quick-note options staff can attach to rooms. These save clinic-wide through Supabase.</div>
+<div class="miniRow">
+<div class="field">
+<label>New quick note</label>
+<input id="newQuickNoteLabel" placeholder="e.g., Needs translator" type="text">
+</div>
+<div class="field">
+<label>Add quick note</label>
+<button class="btn sm primary" id="addQuickNoteBtn" type="button">Add quick note</button>
+</div>
+</div>
+<div id="quickNotesList"></div>
+</div>
 </div>
 <div class="tabPanel" id="tabStaff">
 <div class="card">
@@ -347,16 +298,47 @@ Make sure you are using Google Chrome<br>
 <div class="muted">Optional initials shown next to the doctor name, for example Dr. Smith (JS).</div>
 <div id="doctorInitialsList"></div>
 </div>
-<div class="card">
-<h3>Display doctor highlight</h3>
-<div class="muted">Choose a doctor to highlight their rooms across the board.</div>
-<div class="field" id="doctorHighlightWrap">
-<label>Highlight doctor</label>
-<select id="doctorHighlightSelect">
-<option value="">None</option>
-</select>
+<details class="card settingsCollapsible" id="doctorBadgeStylesPanel">
+<summary>
+<span class="settingsCollapsibleCopy">
+<strong>Doctor badge style</strong>
+<small>Clinic-wide customization for badge size, color, text, and shape.</small>
+</span>
+<span aria-hidden="true" class="settingsCollapsibleHint"></span>
+</summary>
+<div class="settingsCollapsibleBody">
+<div class="muted">Set the global badge size and font size here, then customize each doctor’s badge color, text color, and shape below. Changes save automatically for the whole clinic.</div>
+<div class="doctorBadgeSettingsPanel">
+<div class="doctorBadgeGlobalGrid">
+<div class="field doctorBadgeGlobalField">
+<label>Badge size</label>
+<div class="doctorBadgeRangeRow">
+<input id="doctorInitialBadgeScale" max="2" min="0.7" step="0.05" type="range">
+<input id="doctorInitialBadgeScaleValue" inputmode="decimal" type="text">
+</div>
+<div class="muted">Applies to every doctor badge on the board.</div>
+</div>
+<div class="field doctorBadgeGlobalField">
+<label>Badge font size</label>
+<div class="doctorBadgeRangeRow">
+<input id="doctorInitialBadgeFontSize" max="28" min="10" step="1" type="range">
+<input id="doctorInitialBadgeFontSizeValue" inputmode="numeric" type="text">
+</div>
+<div class="muted">Controls the initials text size inside all doctor badges.</div>
 </div>
 </div>
+<div class="doctorBadgeStylesHeader">
+<span aria-hidden="true"></span>
+<span>Preview</span>
+<span>Badge</span>
+<span>Text</span>
+<span>Shape</span>
+<span>Reset</span>
+</div>
+<div id="doctorBadgeStylesList"></div>
+</div>
+</div>
+</details>
 </div>
 <div class="tabPanel" id="tabLayout">
 <div class="card">
@@ -381,8 +363,139 @@ Make sure you are using Google Chrome<br>
 <input id="displayCardScale" max="1.6" min="0.8" step="0.05" type="range">
 <div class="muted">Only affects Display cards and whiteboard rows.</div>
 </div>
-<div class="actions">
+<div class="actions" hidden>
 <button class="btn sm primary" id="applyLayoutBtn" type="button">Save now</button>
+</div>
+</div>
+<div class="card">
+<h3>Room card fields</h3>
+<div class="muted">Choose which optional details appear on Display room cards. Room name, stopwatch, and room actions stay visible. These settings save clinic-wide.</div>
+<div class="roomCardFieldGrid">
+<label class="roomCardFieldToggle"><input checked id="showRoomCardPatient" type="checkbox"><span>Patient name</span></label>
+<label class="roomCardFieldToggle"><input checked id="showRoomCardType" type="checkbox"><span>Type</span></label>
+<label class="roomCardFieldToggle"><input checked id="showRoomCardDoctorName" type="checkbox"><span>Doctor name</span></label>
+<label class="roomCardFieldToggle"><input checked id="showRoomCardDoctorBadge" type="checkbox"><span>Doctor badge</span></label>
+<label class="roomCardFieldToggle"><input checked id="showRoomCardTech" type="checkbox"><span>Tech name</span></label>
+<label class="roomCardFieldToggle"><input checked id="showRoomCardReady" type="checkbox"><span>Ready badges</span></label>
+<label class="roomCardFieldToggle"><input checked id="showRoomCardQuickNote" type="checkbox"><span>Quick notes</span></label>
+<label class="roomCardFieldToggle"><input checked id="showRoomCardStatusNotes" type="checkbox"><span>Status notes</span></label>
+</div>
+<div class="miniRow" style="margin-top:12px;">
+<div class="field">
+<label>Line spacing value</label>
+<input id="roomCardLineHeightValue" inputmode="decimal" type="text">
+</div>
+<div class="field">
+<label>Line spacing</label>
+<input id="roomCardLineHeight" max="1.8" min="1" step="0.05" type="range">
+<div class="muted">Controls text line spacing on Display room cards. Saves clinic-wide.</div>
+</div>
+</div>
+</div>
+<div class="card">
+<h3>Fonts</h3>
+<div class="muted">Adjust font sizes for better readability on larger screens and TVs. Changes save automatically.</div>
+<div class="miniRow">
+<div class="field">
+<label>Base font (px)</label>
+<input id="fontBase" min="10" step="1" type="number">
+</div>
+<div class="field">
+<label>Card font (px)</label>
+<input id="fontCard" min="10" step="1" type="number">
+</div>
+</div>
+<div class="miniRow">
+<div class="field">
+<label>Display filled info (px)</label>
+<input id="fontDisplay" min="10" step="1" type="number">
+</div>
+<div class="field">
+<label>Timer font (px)</label>
+<input id="fontTimer" min="12" step="1" type="number">
+</div>
+</div>
+<div class="miniRow">
+<div class="field">
+<label>Input font (px)</label>
+<input id="fontInput" min="10" step="1" type="number">
+</div>
+<div class="field" hidden>
+<label>Save now</label>
+<button class="btn sm primary" id="applyFontsBtn" type="button">Save now</button>
+</div>
+</div>
+</div>
+<div class="card">
+<h3>Display colors</h3>
+<div class="muted">Controls text colors on the Display tab, separate from room color labels. Use these only if you want to override the active theme preset. Changes save automatically.</div>
+<div class="miniRow">
+<div class="field">
+<label>Font color</label>
+<input id="displayFontColor" type="color">
+</div>
+<div class="field">
+<label>Muted text</label>
+<input id="displayMutedColor" type="color">
+</div>
+</div>
+<div class="miniRow">
+<div class="field">
+<label>Card text on colors</label>
+<select id="cardTextMode">
+<option value="auto">Auto (best contrast)</option>
+<option value="light">Always light</option>
+<option value="dark">Always dark</option>
+</select>
+<div class="muted">Controls the text color used on colored room cards on the Display board.</div>
+</div>
+<div class="field" hidden>
+<label>Save now</label>
+<button class="btn sm primary" id="applyDisplayColorsBtn" type="button">Save now</button>
+</div>
+</div>
+</div>
+<div class="card">
+<h3>Display doctor highlight</h3>
+<div class="muted">Choose a doctor to highlight their rooms across the display board.</div>
+<div class="field" id="doctorHighlightWrap">
+<label>Highlight doctor</label>
+<select id="doctorHighlightSelect">
+<option value="">None</option>
+</select>
+</div>
+</div>
+<div class="card mobileOnlySettingsCard">
+<h3>Mobile quick view</h3>
+<div class="muted">Phone-only controls for the quick view grid. These changes stay local to this window and do not affect desktop. They save automatically.</div>
+<div class="miniRow">
+<div class="field">
+<label>Quick view columns</label>
+<input id="mobileQuickViewColumns" max="5" min="2" step="1" type="number">
+</div>
+<div class="field">
+<label>Tile gap (px)</label>
+<input id="mobileQuickViewGap" max="16" min="4" step="1" type="number">
+</div>
+</div>
+<div class="field">
+<label>Room name size value</label>
+<input id="mobileQuickViewFontSizeValue" inputmode="decimal" type="text">
+</div>
+<div class="field">
+<label>Room name size</label>
+<input id="mobileQuickViewFontSize" max="32" min="12" step="1" type="range">
+</div>
+<div class="field">
+<label>Timer size value</label>
+<input id="mobileQuickViewTimerSizeValue" inputmode="decimal" type="text">
+</div>
+<div class="field">
+<label>Timer size</label>
+<input id="mobileQuickViewTimerSize" max="20" min="10" step="1" type="range">
+</div>
+<div class="actions" hidden>
+<button class="btn sm primary" id="applyMobileQuickViewBtn" type="button">Save now</button>
 </div>
 </div>
 </div>
@@ -414,10 +527,54 @@ Make sure you are using Google Chrome<br>
 <input id="timerAlert2Color" type="color">
 </div>
 </div>
-<div class="actions">
+<div class="actions" hidden>
 <button class="btn sm primary" id="applyTimerAlertBtn" type="button">Save now</button>
 </div>
 </div>
+<div class="card">
+<h3>Timer and discharge actions</h3>
+<div class="muted">Choose the stopwatch style and discharge icon used on the board. Changes save automatically.</div>
+<div class="miniRow">
+<div class="field">
+<label>Stopwatch style</label>
+<select id="stopwatchStyle">
+<option value="classic">Classic</option>
+<option value="minimal">Minimal</option>
+<option value="glass">Glass</option>
+<option value="scoreboard">Scoreboard</option>
+<option value="pill">Pill</option>
+</select>
+<div class="muted">Choose how the active stopwatch box looks on the Display board.</div>
+</div>
+<div class="field">
+<label>Discharge button icon</label>
+<select id="dischargeIconStyle">
+<option value="paw">Paw + arrow + doorway</option>
+<option value="tooth">Tooth + arrow + doorway</option>
+<option value="door">Door only</option>
+</select>
+<div class="muted">Used everywhere the discharge button appears for this practice.</div>
+</div>
+</div>
+</div>
+<details class="settingsCollapsible" hidden id="stopwatchDiagnosticsPanel">
+<summary>
+<span class="settingsCollapsibleCopy">
+<strong>Stopwatch diagnostics</strong>
+<small>Admin-only self-check for live room timers, active stats sessions, and any rooms that look at risk of being missed.</small>
+</span>
+<span aria-hidden="true" class="settingsCollapsibleHint"></span>
+</summary>
+<div class="settingsCollapsibleBody">
+<div class="actions">
+<button class="btn sm primary" id="runStopwatchDiagnosticsBtn" type="button">Run self-check</button>
+<button class="btn sm" id="repairStopwatchCoverageBtn" type="button">Repair coverage</button>
+</div>
+<div class="muted" id="stopwatchDiagnosticsStatus">Open this section to run a stopwatch and stats self-check.</div>
+<div class="stopwatchDiagnosticsSummary" id="stopwatchDiagnosticsSummary"></div>
+<div class="stopwatchDiagnosticsList" id="stopwatchDiagnosticsList"></div>
+</div>
+</details>
 </div>
 <div class="tabPanel" id="tabAppearance">
 <div class="card">
@@ -441,104 +598,203 @@ Make sure you are using Google Chrome<br>
 <button class="btn sm" id="makeDefaultThemeBtn" type="button">Make current default</button>
 </div>
 </div>
-<div class="card">
-<h3>Fonts</h3>
-<div class="muted">Adjust font sizes for better readability on larger screens and TVs. Changes save automatically.</div>
+<details class="card settingsCollapsible" id="headerBrandingPanel">
+<summary>
+<span class="settingsCollapsibleCopy">
+<strong>Header branding</strong>
+<small>Clinic-wide branding for the header name badge and logo.</small>
+</span>
+<span aria-hidden="true" class="settingsCollapsibleHint"></span>
+</summary>
+<div class="settingsCollapsibleBody">
+<div class="muted">Changes the clinic name badge beside the RoomBoard title and can replace the RoomBoard wordmark with your clinic logo. This is clinic-wide and saves automatically.</div>
 <div class="miniRow">
 <div class="field">
-<label>Base font (px)</label>
-<input id="fontBase" min="10" step="1" type="number">
+<label>Practice name color</label>
+<input id="practiceNameColor" type="color">
 </div>
-<div class="field">
-<label>Card font (px)</label>
-<input id="fontCard" min="10" step="1" type="number">
-</div>
-</div>
-<div class="miniRow">
-<div class="field">
-<label>Display filled info (px)</label>
-<input id="fontDisplay" min="10" step="1" type="number">
-</div>
-<div class="field">
-<label>Timer font (px)</label>
-<input id="fontTimer" min="12" step="1" type="number">
-</div>
-</div>
-<div class="miniRow">
-<div class="field">
-<label>Stopwatch style</label>
-<select id="stopwatchStyle">
-<option value="classic">Classic</option>
-<option value="minimal">Minimal</option>
-<option value="glass">Glass</option>
-<option value="scoreboard">Scoreboard</option>
-<option value="pill">Pill</option>
-</select>
-<div class="muted">Choose how the active stopwatch box looks on the Display board.</div>
-</div>
-</div>
-<div class="miniRow">
-<div class="field">
-<label>Discharge button icon</label>
-<select id="dischargeIconStyle">
-<option value="paw">Paw + arrow + doorway</option>
-<option value="tooth">Tooth + arrow + doorway</option>
-<option value="door">Door only</option>
-</select>
-<div class="muted">Used everywhere the discharge button appears for this practice.</div>
-</div>
-</div>
-<div class="miniRow">
-<div class="field">
-<label>Input font (px)</label>
-<input id="fontInput" min="10" step="1" type="number">
-</div>
-<div class="field">
+<div class="field" hidden>
 <label>Save now</label>
-<button class="btn sm primary" id="applyFontsBtn" type="button">Save now</button>
+<button class="btn sm primary" id="applyPracticeNameColorBtn" type="button">Save now</button>
 </div>
+</div>
+<div class="field">
+<label>Logo size value</label>
+<input id="practiceLogoScaleValue" inputmode="decimal" type="text">
+</div>
+<div class="field">
+<label>Logo size</label>
+<input id="practiceLogoScale" max="5" min="0.6" step="0.05" type="range">
+<div class="muted">Makes the clinic logo smaller or larger in the top header for the whole clinic.</div>
+</div>
+<label style="display:flex; align-items:center; gap:8px; margin:8px 0 0; font-size:13px; color:var(--muted); cursor:pointer;">
+<input checked id="showPracticeNameBadge" style="width:16px; height:16px; margin:0;" type="checkbox">
+<span>Show practice name badge in header</span>
+</label>
+<label style="display:flex; align-items:center; gap:8px; margin:8px 0 0; font-size:13px; color:var(--muted); cursor:pointer;">
+<input id="practiceLogoInvert" style="width:16px; height:16px; margin:0;" type="checkbox">
+<span>Invert logo colors</span>
+</label>
+<div class="muted">Use this when a theme makes the clinic logo hard to see.</div>
+<div class="field">
+<label>Clinic logo</label>
+<input accept="image/png,image/jpeg,image/webp,image/svg+xml" id="practiceLogoFile" type="file">
+<div class="muted" id="practiceLogoHelp">Uploads replace the RoomBoard wordmark with your clinic logo for the whole clinic.</div>
+</div>
+<div class="practiceLogoPreview" id="practiceLogoPreviewWrap">
+<img alt="Clinic logo preview" hidden id="practiceLogoPreviewImage">
+<div class="practiceLogoPreviewEmpty" id="practiceLogoPreviewEmpty">No clinic logo uploaded yet.</div>
+</div>
+<div class="actions">
+<button class="btn sm primary" id="uploadPracticeLogoBtn" type="button">Upload logo</button>
+<button class="btn sm" id="removePracticeLogoBtn" type="button">Remove logo</button>
+</div>
+</div>
+</details>
+</div>
+<div class="tabPanel" id="tabUtilities">
+<div class="card">
+<h3>Browser add-ons</h3>
+<div class="muted">Download the packaged browser add-ons from this same folder. Use Pulse Capture for scheduler sends and Mini Overlay for the floating room view.</div>
+<div class="actions">
+<a class="btn sm" download href="pulse-vetboard-addon.zip" style="text-decoration:none;" target="_blank">Pulse addon zip</a>
+<a class="btn sm" download href="vetboard-mini-overlay-extension-v1.1.20.zip" style="text-decoration:none;" target="_blank">Mini overlay zip</a>
+</div>
+<details class="settingsCollapsible" style="margin-top:12px;">
+<summary>
+<span class="settingsCollapsibleCopy">
+<strong>Install and update help</strong>
+<small>Step-by-step browser extension install and refresh instructions.</small>
+</span>
+<span aria-hidden="true" class="settingsCollapsibleHint"></span>
+</summary>
+<div class="settingsCollapsibleBody">
+<div class="muted" style="line-height:1.55;">
+<strong style="color:var(--settingsText);">What this does</strong><br>
+These add-ons let you use RoomBoard tools directly inside your browser.<br><br>
+<strong style="color:var(--settingsText);">Step 1: Download the add-on</strong><br>
+Click the download button for the add-on you want. A zip file will be saved to your computer.<br><br>
+<strong style="color:var(--settingsText);">Step 2: Open your Downloads folder</strong><br>
+Find the file you just downloaded.<br><br>
+<strong style="color:var(--settingsText);">Step 3: Unzip the file</strong><br>
+Right-click the file and select Extract, Open, or Unzip depending on your computer.<br><br>
+<strong style="color:var(--settingsText);">Step 4: Move the folder somewhere easy to find</strong><br>
+Your Desktop is usually easiest.<br><br>
+<strong style="color:var(--settingsText);">Step 5: Open Chrome extensions</strong><br>
+Open Google Chrome and go to <code>chrome://extensions</code>.<br><br>
+<strong style="color:var(--settingsText);">Step 6: Turn on Developer Mode</strong><br>
+Use the toggle in the top right corner.<br><br>
+<strong style="color:var(--settingsText);">Step 7: Add or update the add-on</strong><br>
+Click “Load unpacked” and select the unzipped folder. If you are updating, replace the old folder first and then click Reload on the extension card.<br><br>
+<strong style="color:var(--settingsText);">Step 8: Refresh your page</strong><br>
+Return to RoomBoard or your scheduler page and refresh the tab.<br><br>
+<strong style="color:var(--settingsText);">Troubleshooting</strong><br>
+Make sure you unzipped the file, selected the folder instead of the zip, and reloaded the extension after updates.
+</div>
+</div>
+</details>
+</div>
+<div class="card" id="desktopDownloadCard" style="display:none;">
+<h3>Windows app download</h3>
+<div class="muted">Install RoomBoard as a standalone Windows app instead of opening it in a browser tab.</div>
+<div class="actions">
+<a class="btn sm primary" href="#" id="desktopDownloadLink" rel="noopener" style="text-decoration:none;" target="_blank">Download RoomBoard for Windows</a>
+</div>
+<div class="muted" id="desktopDownloadMeta"></div>
+</div>
+<div class="card" id="captureDownloadCard" style="display:none;">
+<h3>Capture app download for Windows</h3>
+<div class="muted">Install the Windows capture app for sending appointments from browser, server-based, and desktop scheduler systems into RoomBoard.</div>
+<div class="actions">
+<a class="btn sm primary" href="#" id="captureDownloadLink" rel="noopener" style="text-decoration:none;" target="_blank">Download RoomBoard Capture for Windows</a>
+</div>
+<div class="muted" id="captureDownloadMeta"></div>
+</div>
+<div class="card" id="captureMacDownloadCard" style="display:none;">
+<h3>Capture app download for Mac</h3>
+<div class="muted">Install the Mac capture app for sending appointments from macOS scheduler systems into RoomBoard.</div>
+<div class="actions">
+<a class="btn sm primary" href="#" id="captureMacDownloadLink" rel="noopener" style="text-decoration:none;" target="_blank">Download RoomBoard Capture for Mac</a>
+</div>
+<div class="muted" id="captureMacDownloadMeta"></div>
+</div>
+<div class="card">
+<h3>Practice defaults</h3>
+<div class="muted">Save this clinic's current layout and appearance defaults for new tabs and future sessions.</div>
+<div class="actions">
+<button class="btn sm primary" id="savePracticeDefaultsBtn" type="button">Save as Default</button>
 </div>
 </div>
 <div class="card">
-<h3>Display colors</h3>
-<div class="muted">Controls text colors on the Display tab, separate from room color labels. Use these only if you want to override the active theme preset. Changes save automatically.</div>
-<div class="miniRow">
-<div class="field">
-<label>Font color</label>
-<input id="displayFontColor" type="color">
+<h3>Backup and restore</h3>
+<div class="muted">Export the current clinic configuration to JSON or import a previously exported RoomBoard backup.</div>
+<div class="actions">
+<button class="btn sm" id="exportClinicConfigBtn" type="button">Export config</button>
+<button class="btn sm" id="importClinicConfigBtn" type="button">Import config</button>
 </div>
-<div class="field">
-<label>Muted text</label>
-<input id="displayMutedColor" type="color">
+<input accept=".json,application/json" hidden id="importClinicConfigFile" type="file">
+</div>
+<details class="card settingsCollapsible" id="settingsScopesBox">
+<summary>
+<span class="settingsCollapsibleCopy">
+<strong>Save model and docs</strong>
+<small>See which changes stay in this window, save as defaults, or affect the whole clinic.</small>
+</span>
+<span aria-hidden="true" class="settingsCollapsibleHint"></span>
+</summary>
+<div class="settingsCollapsibleBody">
+<div class="muted">RoomBoard separates settings by where they should apply so changes are easier to trust.</div>
+<div class="scopeLegend">
+<span class="scopeBadge scopeBadgeWindow">This window</span>
+<span class="scopeBadge scopeBadgePersonal">My defaults</span>
+<span class="scopeBadge scopeBadgeClinic">Clinic-wide</span>
+</div>
+<div class="scopeGrid">
+<div class="scopeItem">
+<strong>This window</strong>
+<div class="muted">Temporary viewing choices like sort mode, active-only filtering, and highlight state.</div>
+</div>
+<div class="scopeItem">
+<strong>My defaults</strong>
+<div class="muted">Personal preferences like theme and personal readability defaults.</div>
+</div>
+<div class="scopeItem">
+<strong>Clinic-wide</strong>
+<div class="muted">Shared operational items like rooms, doctors, color labels, and board sync data.</div>
 </div>
 </div>
-<div class="miniRow">
-<div class="field">
-<label>Card text on colors</label>
-<select id="cardTextMode">
-<option value="auto">Auto (best contrast)</option>
-<option value="light">Always light</option>
-<option value="dark">Always dark</option>
-</select>
-<div class="muted">Controls the text color used on colored room cards on the Display board.</div>
-</div>
-<div class="field">
-<label>Save now</label>
-<button class="btn sm primary" id="applyDisplayColorsBtn" type="button">Save now</button>
+<div class="actions">
+<a class="btn sm" href="./settings-save-model.md" target="_blank">Open save model</a>
+<a class="btn sm" href="./smoke-test-checklist.md" target="_blank">Open smoke checklist</a>
 </div>
 </div>
+</details>
+<details class="card settingsCollapsible" id="settingsHealthCard">
+<summary>
+<span class="settingsCollapsibleCopy">
+<strong>Save check</strong>
+<small>See whether RoomBoard notices any risky or incomplete settings before saving.</small>
+</span>
+<span aria-hidden="true" class="settingsCollapsibleHint"></span>
+</summary>
+<div class="settingsCollapsibleBody">
+<div class="muted" id="settingsHealthSummary">RoomBoard checks your settings before it saves them, kind of like a spell-check for setup changes.</div>
+<ul class="settingsHealthList isOk" id="settingsHealthList">
+<li>Everything looks good right now.</li>
+</ul>
 </div>
+</details>
 </div>
 </div>
 </aside>
 <script src="./config.js?v=20260419e"></script>
-<script src="./js/compat.js?v=20260419d"></script>
-<script src="./js/board-state.js?v=20260419d"></script>
-<script src="./js/rendering.js?v=20260419d"></script>
-<script src="./js/settings.js?v=20260419d"></script>
-<script src="./js/auth-sync.js?v=20260419d"></script>
+<script src="./js/compat.js?v=20260517b"></script>
+<script src="./js/board-state.js?v=20260517d"></script>
+<script src="./js/rendering.js?v=20260517e"></script>
+<script src="./js/settings.js?v=20260517e"></script>
+<script src="./js/auth-sync.js?v=20260517d"></script>
 <script src="./js/ux.js?v=20260419e"></script>
-<script src="./js/theme.js?v=20260419d"></script>
-<script src="./js/init.js?v=20260419d"></script>
+<script src="./js/theme.js?v=20260517d"></script>
+<script src="./js/init.js?v=20260517c"></script>
 </body>
 </html>

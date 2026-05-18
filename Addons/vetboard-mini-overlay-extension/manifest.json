@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VetBoard Mini Overlay",
-  "version": "1.0.0",
+  "version": "1.1.20",
   "description": "Floating mini roomboard overlay for VetBoard staff workflows on any tab.",
   "permissions": [
     "activeTab",
@@ -32,7 +32,13 @@
     {
       "resources": [
         "styles.css",
-        "page-bridge.js"
+        "page-bridge.js",
+        "crab-badge.png",
+        "french-bulldog-badge.png",
+        "flower-badge.png",
+        "flower2-badge.png",
+        "golfball-badge.png",
+        "seaturtle-badge.png"
       ],
       "matches": [
         "<all_urls>"

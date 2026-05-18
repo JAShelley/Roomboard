@@ -22,7 +22,7 @@
 - Display sort mode: this window only
 - Doctor highlight selection: this window only
 - Display layout mode: this window only
-- Display card scale and display text override colors: this window only
+- Display card scale, room card field visibility, and display text override colors: this window only
 
 ## Notes
 - The board is now split into separate HTML, CSS, and JavaScript files under `public/roomboard`.

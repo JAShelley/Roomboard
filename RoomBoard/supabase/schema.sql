@@ -63,11 +63,41 @@ create table if not exists public.practice_feedback_items (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.room_sessions (
+  id uuid primary key default gen_random_uuid(),
+  practice_id uuid null references public.practices (id) on delete cascade,
+  room_name text not null,
+  doctor_name text null,
+  started_at timestamptz not null,
+  ended_at timestamptz null,
+  duration_ms bigint null check (duration_ms is null or duration_ms >= 0),
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.cleaning_sessions (
+  id uuid primary key default gen_random_uuid(),
+  practice_id uuid null references public.practices (id) on delete cascade,
+  room_name text not null,
+  started_at timestamptz not null,
+  ended_at timestamptz null,
+  duration_ms bigint null check (duration_ms is null or duration_ms >= 0),
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists public.room_board_entries (
   id uuid primary key default gen_random_uuid(),
   practice_id uuid not null references public.practices (id) on delete cascade,
   room_id uuid not null unique references public.rooms (id) on delete cascade,
   data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.practice_board_state (
+  practice_id uuid primary key references public.practices (id) on delete cascade,
+  board_state jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
@@ -102,8 +132,11 @@ create index if not exists doctors_practice_id_idx on public.doctors (practice_i
 create index if not exists appointment_types_practice_id_idx on public.appointment_types (practice_id, sort_order);
 create index if not exists quick_notes_practice_id_idx on public.quick_notes (practice_id, sort_order);
 create index if not exists practice_feedback_items_practice_id_idx on public.practice_feedback_items (practice_id, created_at desc);
+create index if not exists room_sessions_practice_id_idx on public.room_sessions (practice_id, started_at desc);
+create index if not exists cleaning_sessions_practice_id_idx on public.cleaning_sessions (practice_id, started_at desc);
 create index if not exists room_board_entries_practice_id_idx on public.room_board_entries (practice_id, room_id);
 create index if not exists practice_settings_practice_id_idx on public.practice_settings (practice_id);
+create index if not exists practice_board_state_updated_at_idx on public.practice_board_state (updated_at desc);
 
 create unique index if not exists rooms_practice_name_idx
   on public.rooms (practice_id, lower(name));
@@ -144,6 +177,156 @@ as $$
       and practice_id = target_practice_id
       and role = 'admin'
   );
+$$;
+
+create or replace function public.get_server_now_iso()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select timezone('utc', now())::text;
+$$;
+
+alter table public.practices
+  add column if not exists invite_code text;
+
+create or replace function public.create_unique_practice_invite_code(exclude_practice_id uuid default null)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  candidate text;
+begin
+  loop
+    candidate := upper(substr(encode(gen_random_bytes(6), 'hex'), 1, 10));
+    exit when not exists (
+      select 1
+      from public.practices
+      where invite_code = candidate
+        and (exclude_practice_id is null or id <> exclude_practice_id)
+    );
+  end loop;
+  return candidate;
+end;
+$$;
+
+update public.practices
+set invite_code = public.create_unique_practice_invite_code(id)
+where coalesce(trim(invite_code), '') = '';
+
+alter table public.practices
+  alter column invite_code set not null;
+
+create unique index if not exists practices_invite_code_idx
+  on public.practices (invite_code);
+
+create or replace function public.get_my_practice_invite_details()
+returns table (
+  practice_id uuid,
+  practice_name text,
+  invite_code text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.id, p.name, p.invite_code
+  from public.practices p
+  join public.profiles pr on pr.practice_id = p.id
+  where pr.user_id = auth.uid()
+    and pr.role = 'admin'
+  limit 1;
+$$;
+
+create or replace function public.rotate_my_practice_invite_code()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_practice_id uuid;
+  next_code text;
+begin
+  select practice_id
+  into target_practice_id
+  from public.profiles
+  where user_id = auth.uid()
+    and role = 'admin'
+  limit 1;
+
+  if target_practice_id is null then
+    raise exception 'Only clinic admins can rotate invite codes.';
+  end if;
+
+  next_code := public.create_unique_practice_invite_code(target_practice_id);
+
+  update public.practices
+  set invite_code = next_code
+  where id = target_practice_id;
+
+  return next_code;
+end;
+$$;
+
+create or replace function public.join_practice_with_invite_code(
+  invite_code text,
+  member_full_name text
+)
+returns table (
+  practice_id uuid,
+  practice_name text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_code text;
+  target_practice public.practices%rowtype;
+begin
+  if auth.uid() is null then
+    raise exception 'You must be signed in to join a practice.';
+  end if;
+
+  if trim(coalesce(member_full_name, '')) = '' then
+    raise exception 'Full name is required.';
+  end if;
+
+  if exists (
+    select 1
+    from public.profiles
+    where user_id = auth.uid()
+  ) then
+    raise exception 'This user already belongs to a practice.';
+  end if;
+
+  normalized_code := upper(regexp_replace(coalesce(invite_code, ''), '[^A-Za-z0-9]', '', 'g'));
+  if normalized_code = '' then
+    raise exception 'Invite code is required.';
+  end if;
+
+  select *
+  into target_practice
+  from public.practices
+  where invite_code = normalized_code
+  limit 1;
+
+  if target_practice.id is null then
+    raise exception 'That invite code was not recognized.';
+  end if;
+
+  insert into public.profiles (user_id, practice_id, full_name, role)
+  values (auth.uid(), target_practice.id, trim(member_full_name), 'member');
+
+  return query
+  select target_practice.id, target_practice.name;
+end;
 $$;
 
 create or replace function public.create_practice_with_admin(
@@ -194,6 +377,11 @@ $$;
 
 grant execute on function public.get_my_practice_id() to authenticated;
 grant execute on function public.is_practice_admin(uuid) to authenticated;
+grant execute on function public.get_server_now_iso() to authenticated;
+grant execute on function public.create_unique_practice_invite_code(uuid) to authenticated;
+grant execute on function public.get_my_practice_invite_details() to authenticated;
+grant execute on function public.rotate_my_practice_invite_code() to authenticated;
+grant execute on function public.join_practice_with_invite_code(text, text) to authenticated;
 grant execute on function public.create_practice_with_admin(text, text) to authenticated;
 
 alter table public.practices enable row level security;
@@ -203,7 +391,10 @@ alter table public.doctors enable row level security;
 alter table public.appointment_types enable row level security;
 alter table public.quick_notes enable row level security;
 alter table public.practice_feedback_items enable row level security;
+alter table public.room_sessions enable row level security;
+alter table public.cleaning_sessions enable row level security;
 alter table public.room_board_entries enable row level security;
+alter table public.practice_board_state enable row level security;
 alter table public.practice_settings enable row level security;
 
 drop policy if exists "Practice members can view their practice" on public.practices;
@@ -263,6 +454,50 @@ create policy "Practice members can delete feedback in their practice"
   for delete
   to authenticated
   using (practice_id = public.get_my_practice_id());
+
+drop policy if exists "Practice members can view room sessions in their practice" on public.room_sessions;
+create policy "Practice members can view room sessions in their practice"
+  on public.room_sessions
+  for select
+  to authenticated
+  using (practice_id = public.get_my_practice_id());
+
+drop policy if exists "Practice members can insert room sessions in their practice" on public.room_sessions;
+create policy "Practice members can insert room sessions in their practice"
+  on public.room_sessions
+  for insert
+  to authenticated
+  with check (practice_id = public.get_my_practice_id());
+
+drop policy if exists "Practice members can update room sessions in their practice" on public.room_sessions;
+create policy "Practice members can update room sessions in their practice"
+  on public.room_sessions
+  for update
+  to authenticated
+  using (practice_id = public.get_my_practice_id())
+  with check (practice_id = public.get_my_practice_id());
+
+drop policy if exists "Practice members can view cleaning sessions in their practice" on public.cleaning_sessions;
+create policy "Practice members can view cleaning sessions in their practice"
+  on public.cleaning_sessions
+  for select
+  to authenticated
+  using (practice_id = public.get_my_practice_id());
+
+drop policy if exists "Practice members can insert cleaning sessions in their practice" on public.cleaning_sessions;
+create policy "Practice members can insert cleaning sessions in their practice"
+  on public.cleaning_sessions
+  for insert
+  to authenticated
+  with check (practice_id = public.get_my_practice_id());
+
+drop policy if exists "Practice members can update cleaning sessions in their practice" on public.cleaning_sessions;
+create policy "Practice members can update cleaning sessions in their practice"
+  on public.cleaning_sessions
+  for update
+  to authenticated
+  using (practice_id = public.get_my_practice_id())
+  with check (practice_id = public.get_my_practice_id());
 
 drop policy if exists "Practice admins can insert rooms in their practice" on public.rooms;
 create policy "Practice admins can insert rooms in their practice"
@@ -402,6 +637,28 @@ create policy "Practice admins can delete room board entries in their practice"
   to authenticated
   using (public.is_practice_admin(practice_id));
 
+drop policy if exists "Practice members can view board state in their practice" on public.practice_board_state;
+create policy "Practice members can view board state in their practice"
+  on public.practice_board_state
+  for select
+  to authenticated
+  using (practice_id = public.get_my_practice_id());
+
+drop policy if exists "Practice members can insert board state in their practice" on public.practice_board_state;
+create policy "Practice members can insert board state in their practice"
+  on public.practice_board_state
+  for insert
+  to authenticated
+  with check (practice_id = public.get_my_practice_id());
+
+drop policy if exists "Practice members can update board state in their practice" on public.practice_board_state;
+create policy "Practice members can update board state in their practice"
+  on public.practice_board_state
+  for update
+  to authenticated
+  using (practice_id = public.get_my_practice_id())
+  with check (practice_id = public.get_my_practice_id());
+
 drop policy if exists "Practice members can view settings in their practice" on public.practice_settings;
 create policy "Practice members can view settings in their practice"
   on public.practice_settings
@@ -446,8 +703,17 @@ before update on public.room_board_entries
 for each row
 execute function public.update_updated_at_column();
 
+drop trigger if exists practice_board_state_set_updated_at on public.practice_board_state;
+create trigger practice_board_state_set_updated_at
+before update on public.practice_board_state
+for each row
+execute function public.update_updated_at_column();
+
 comment on function public.create_practice_with_admin(text, text) is
   'Creates one practice and the first admin profile for the authenticated user.';
+
+comment on function public.join_practice_with_invite_code(text, text) is
+  'Links the authenticated user to an existing practice as a member using that clinic''s invite code.';
 
 comment on table public.rooms is
   'Future board rows should continue to scope by practice_id and never by client-side route params alone.';
@@ -463,6 +729,9 @@ comment on table public.quick_notes is
 
 comment on table public.room_board_entries is
   'Live per-room board state for each practice, including patient, flags, timers, and cleaning status.';
+
+comment on table public.practice_board_state is
+  'Shared serialized board state for each practice, used by the board UI and Pulse sync flows.';
 
 comment on table public.practice_settings is
   'One settings row per practice keeps board preferences isolated between different RoomBoard accounts.';

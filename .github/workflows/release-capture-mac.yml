@@ -1,0 +1,91 @@
+name: Release Capture Mac Installer
+
+on:
+  push:
+    tags:
+      - "capture-mac-v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to create or update, for example capture-mac-v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-capture-mac:
+    runs-on: macos-latest
+
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: RoomBoard/package-lock.json
+
+      - name: Install dependencies
+        working-directory: RoomBoard
+        shell: bash
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: RoomBoard
+        shell: bash
+        run: npm run typecheck
+
+      - name: Build Capture Mac installer
+        working-directory: RoomBoard
+        shell: bash
+        run: npm run capture:dist:mac
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomboard-capture-mac-release-${{ github.run_number }}
+          path: |
+            RoomBoard/dist-capture-mac/*.dmg
+            RoomBoard/dist-capture-mac/*.zip
+            RoomBoard/dist-capture-mac/latest*.yml
+          if-no-files-found: error
+
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          assets=(RoomBoard/dist-capture-mac/*.dmg RoomBoard/dist-capture-mac/*.zip RoomBoard/dist-capture-mac/latest*.yml)
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No capture Mac release assets were generated."
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "RoomBoard Capture Mac $RELEASE_TAG" \
+              --notes "Mac installer build for RoomBoard Capture."
+          fi

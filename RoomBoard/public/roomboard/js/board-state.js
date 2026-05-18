@@ -8,10 +8,12 @@
     var logoutInProgress = false;
     var lastAppliedBoardStateSignature = "";
     var quickAddDraftState = null;
+    var quickAddTimerAdjustOpen = false;
     window.__roomboardPracticeId = null;
     var REMEMBER_ME_STORAGE_KEY = "roomboard.website.rememberMe.v1";
     var AUTH_STORAGE_KEY = "roomboard.website.auth.v1";
     var STORAGE_KEY_PREFIX = "roomboard.website.state.v1";
+    var LAST_PRACTICE_ID_STORAGE_KEY = "roomboard.website.lastPracticeId.v1";
     var SESSION_TECH_VIEW_KEY_PREFIX = "roomboard.website.session.techView.v1";
     var SERVER_TIME_OFFSET_STORAGE_KEY = "roomboard.website.serverTimeOffsetMs.v1";
     var serverTimeOffsetMs = 0;
@@ -95,15 +97,16 @@
         reason: defaultColor ? defaultColor.title : DEFAULT_REASONS[0],
         colorLabelId: defaultColorId,
         colorHex: "",
-        doctor: "",
-        tech: "",
-        notes: "",
-        quickNote: "",
-        roomReady: false,
+	        doctor: "",
+	        tech: "",
+	        notes: "",
+	        quickNote: "",
+	        quickNotes: [],
+	        roomReady: false,
         doctorReady: false,
         needsCleaning: false,
-        timer: { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null },
-        cleaningTimer: { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null },
+        timer: { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null },
+        cleaningTimer: { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null },
         activeRoomSessionId: null,
         activeCleaningSessionId: null,
         lastDischargeSnapshot: null
@@ -135,15 +138,37 @@
       dischargeIconStyle: "paw",
       bgColor: "#0b1220",
       displayCardScale: 1,
+      roomCardLineHeight: 1.35,
       intakeCardScale: 1,
       displayFontColor: "#e8eefc",
-	      displayMutedColor: "#a9b6d3",
-		      displayLayout: "grid",
-		      displayOnlyActive: false,
-		      displaySortMode: "room",
-		      stopwatchStyle: "classic",
-		      highlightDoctor: "",
-		      cardTextMode: "auto",
+      displayMutedColor: "#a9b6d3",
+	      practiceNameColor: "#fecdd3",
+	      showPracticeNameBadge: true,
+	      practiceLogoScale: 1,
+	      practiceLogoInvert: false,
+	      doctorInitialBadgeScale: 1,
+	      doctorInitialBadgeFontSize: 16,
+	      doctorInitialBadgeColor: "#0b1220",
+	      doctorInitialBadgeTextColor: "#e8eefc",
+	      doctorBadgeStyles: {},
+	      practiceLogoPath: "",
+      practiceLogoUrl: "",
+      practiceLogoUpdatedAt: "",
+      displayLayout: "grid",
+      displayOnlyActive: false,
+      displaySortMode: "room",
+      stopwatchStyle: "classic",
+      highlightDoctor: "",
+      cardTextMode: "auto",
+      showRoomCardPatient: true,
+      showRoomCardType: true,
+      showRoomCardDoctor: true,
+      showRoomCardDoctorName: true,
+      showRoomCardDoctorBadge: true,
+      showRoomCardTech: true,
+      showRoomCardReady: true,
+      showRoomCardQuickNote: true,
+      showRoomCardStatusNotes: true,
       defaultColorLabelId: null,
       themePreset: "dark",
       themeDefaultPreset: "dark",
@@ -169,6 +194,8 @@
 	    var lastRemoteRefreshAt = 0;
     var lastRemoteConfigRefreshAt = 0;
 	    var saveDebounce = null;
+      var remoteSaveRetryTimer = null;
+      var remoteSaveRetryCount = 0;
 		    var sessionKeepAliveTimer = null;
 		    var sessionRefreshInFlight = null;
         var authRecoveryInFlight = null;
@@ -176,12 +203,17 @@
 	        var lastPracticeConfigSignature = "";
 	        var lastAppointmentTypesSignature = "";
 	        var lastRoomBoardSignature = "";
+	        var localBoardDirty = false;
+	        var doctorBadgeSettingsDirty = false;
 	        var lastLocalPersistenceKey = "";
 	        var lastLocalPersistenceSnapshot = "";
 	        var currentUserId = null;
+        var currentUserEmail = "";
+        var currentUserFullName = "";
 	        var pendingConfigSave = false;
 	        var pendingAppointmentTypesSave = false;
 	        var pendingBoardSave = false;
+	        var pendingUserSettingsSave = false;
         var remoteRateLimitUntil = 0;
 	    var timerBindings = [];
 	    var roomLookup = Object.create(null);
@@ -201,9 +233,69 @@
       var settingsAutosaveJobs = Object.create(null);
       var settingsRemoteSaveQueued = false;
       var renderPerf = createRenderPerfTracker();
-      var REMOTE_BOARD_SAVE_DELAY_MS = 40;
-      var REMOTE_CONFIG_SAVE_DELAY_MS = 450;
-      var REMOTE_REFRESH_THROTTLE_MS = 120;
+    var REMOTE_BOARD_SAVE_DELAY_MS = 40;
+    var REMOTE_CONFIG_SAVE_DELAY_MS = 450;
+    var REMOTE_REFRESH_THROTTLE_MS = 120;
+
+    function normalizeStoredPracticeId(value){
+      var normalized = String(value == null ? "" : value).trim();
+      if(!normalized || normalized === "guest") return "";
+      return normalized;
+    }
+
+    function hasStoredAuthSessionSnapshot(){
+      try{
+        var localRaw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+        if(localRaw && localRaw !== "null") return true;
+      }catch(e){}
+      try{
+        var sessionRaw = window.sessionStorage.getItem(AUTH_STORAGE_KEY);
+        if(sessionRaw && sessionRaw !== "null") return true;
+      }catch(e){}
+      return false;
+    }
+
+    function getLastKnownPracticeId(){
+      try{
+        var localValue = normalizeStoredPracticeId(window.localStorage.getItem(LAST_PRACTICE_ID_STORAGE_KEY));
+        if(localValue) return localValue;
+      }catch(e){}
+      try{
+        var sessionValue = normalizeStoredPracticeId(window.sessionStorage.getItem(LAST_PRACTICE_ID_STORAGE_KEY));
+        if(sessionValue) return sessionValue;
+      }catch(e){}
+      return "";
+    }
+
+    function setLastKnownPracticeId(practiceId){
+      var normalized = normalizeStoredPracticeId(practiceId);
+      try{
+        if(normalized) window.localStorage.setItem(LAST_PRACTICE_ID_STORAGE_KEY, normalized);
+        else window.localStorage.removeItem(LAST_PRACTICE_ID_STORAGE_KEY);
+      }catch(e){}
+      try{
+        if(normalized) window.sessionStorage.setItem(LAST_PRACTICE_ID_STORAGE_KEY, normalized);
+        else window.sessionStorage.removeItem(LAST_PRACTICE_ID_STORAGE_KEY);
+      }catch(e){}
+      window.__roomboardBootPracticeScope = normalized || null;
+      return normalized;
+    }
+
+    function getBootPersistenceScope(){
+      if(currentPracticeId) return currentPracticeId;
+      if(window.__roomboardBootPracticeScope) return window.__roomboardBootPracticeScope;
+      if(!hasStoredAuthSessionSnapshot()) return "guest";
+      var lastPracticeId = getLastKnownPracticeId();
+      if(lastPracticeId){
+        window.__roomboardBootPracticeScope = lastPracticeId;
+        return lastPracticeId;
+      }
+      return "guest";
+    }
+
+    window.setLastKnownPracticeId = setLastKnownPracticeId;
+    window.getLastKnownPracticeId = getLastKnownPracticeId;
+    window.getBootPersistenceScope = getBootPersistenceScope;
       var REMOTE_CONFIG_REFRESH_THROTTLE_MS = 280;
       var AUTO_PULL_INTERVAL_MS = 2500;
       var REALTIME_ACTIVE_GRACE_MS = 3000;
@@ -229,13 +321,18 @@
       "intakeCardScale",
       "displayFontColor",
 	      "displayMutedColor",
-		      "displayLayout",
-		      "displayOnlyActive",
-		      "displaySortMode",
-		      "stopwatchStyle",
-		      "highlightDoctor",
-		      "cardTextMode"
-    ];
+	      "displayLayout",
+	      "mobileQuickView",
+	      "mobileQuickViewColumns",
+	      "mobileQuickViewGap",
+	      "mobileQuickViewFontSize",
+	      "mobileQuickViewTimerSize",
+	      "displayOnlyActive",
+	      "displaySortMode",
+			      "stopwatchStyle",
+			      "highlightDoctor",
+			      "cardTextMode"
+	    ];
     var WINDOW_APPEARANCE_SETTING_KEYS = [
       "displayCols",
       "displayRows",
@@ -249,13 +346,18 @@
       "intakeCardScale",
       "displayFontColor",
       "displayMutedColor",
-      "displayLayout",
-      "displayOnlyActive",
-      "displaySortMode",
-      "stopwatchStyle",
-      "highlightDoctor",
-      "cardTextMode"
-    ];
+	      "displayLayout",
+	      "mobileQuickView",
+	      "mobileQuickViewColumns",
+	      "mobileQuickViewGap",
+	      "mobileQuickViewFontSize",
+	      "mobileQuickViewTimerSize",
+	      "displayOnlyActive",
+	      "displaySortMode",
+	      "stopwatchStyle",
+	      "highlightDoctor",
+	      "cardTextMode"
+	    ];
     var ACCOUNT_LOCAL_SETTING_DEFAULTS = {
       displayCols: 4,
       displayRows: 0,
@@ -270,13 +372,18 @@
       intakeCardScale: 1,
       displayFontColor: "#e8eefc",
 	      displayMutedColor: "#a9b6d3",
-		      displayLayout: "grid",
-		      displayOnlyActive: false,
-		      displaySortMode: "room",
-		      stopwatchStyle: "classic",
-		      highlightDoctor: "",
-		      cardTextMode: "auto"
-    };
+			      displayLayout: "grid",
+			      mobileQuickView: false,
+			      mobileQuickViewColumns: 4,
+			      mobileQuickViewGap: 8,
+			      mobileQuickViewFontSize: 22,
+			      mobileQuickViewTimerSize: 13,
+			      displayOnlyActive: false,
+			      displaySortMode: "room",
+			      stopwatchStyle: "classic",
+			      highlightDoctor: "",
+			      cardTextMode: "auto"
+	    };
     var activeAccountSettingsScope = "guest";
     var accountSettingsState = null;
 
@@ -455,13 +562,47 @@
       if(batch.timerBindings) rebuildTimerBindings();
     }
 
-    function cloneAccountSettingValue(key, value){
-      if(key === "doctorInitials"){
-        if(!value || typeof value !== "object") return {};
-        return JSON.parse(JSON.stringify(value));
-      }
-      return value;
-    }
+	    function cloneAccountSettingValue(key, value){
+	      if(key === "doctorInitials" || key === "doctorBadgeStyles"){
+	        if(!value || typeof value !== "object") return {};
+	        return JSON.parse(JSON.stringify(value));
+	      }
+	      return value;
+	    }
+
+	    function normalizeDoctorBadgeShape(shape){
+	      var value = String(shape || "").trim().toLowerCase();
+	      if(value === "triangle" || value === "star" || value === "hexagon" || value === "circle" || value === "crab" || value === "bulldog" || value === "flower" || value === "flower2" || value === "turtle" || value === "golfball" || value === "strawberry") return value;
+	      return "square";
+	    }
+
+	    function normalizeDoctorBadgeStylesMap(raw){
+	      var input = (raw && typeof raw === "object") ? raw : {};
+	      var out = {};
+	      for(var key in input){
+	        if(!Object.prototype.hasOwnProperty.call(input, key)) continue;
+	        var doctorName = String(key || "").trim();
+	        if(!doctorName) continue;
+	        var entry = input[key] && typeof input[key] === "object" ? input[key] : {};
+	        out[doctorName] = {
+	          color: String(entry.color || "").trim(),
+	          textColor: String(entry.textColor || "").trim(),
+	          shape: normalizeDoctorBadgeShape(entry.shape)
+	        };
+	      }
+	      return out;
+	    }
+
+	    function getDoctorBadgeStyle(doctorName){
+	      var settings = state && state.settings ? state.settings : {};
+	      var customMap = normalizeDoctorBadgeStylesMap(settings.doctorBadgeStyles);
+	      var custom = doctorName ? customMap[String(doctorName || "").trim()] : null;
+	      return {
+	        color: String(custom && custom.color || settings.doctorInitialBadgeColor || "#0b1220").trim(),
+	        textColor: String(custom && custom.textColor || settings.doctorInitialBadgeTextColor || settings.displayFontColor || "#e8eefc").trim(),
+	        shape: normalizeDoctorBadgeShape(custom && custom.shape)
+	      };
+	    }
     function normalizeAccountSettings(raw){
       var input = (raw && typeof raw === "object") ? raw : {};
       var out = {};
@@ -469,6 +610,12 @@
         var key = ACCOUNT_LOCAL_SETTING_KEYS[i];
         if(input[key] == null) out[key] = cloneAccountSettingValue(key, ACCOUNT_LOCAL_SETTING_DEFAULTS[key]);
         else out[key] = cloneAccountSettingValue(key, input[key]);
+      }
+      if(input.showRoomCardDoctorName == null && input.showRoomCardDoctor != null){
+        out.showRoomCardDoctorName = input.showRoomCardDoctor !== false;
+      }
+      if(input.showRoomCardDoctorBadge == null && input.showRoomCardDoctor != null){
+        out.showRoomCardDoctorBadge = input.showRoomCardDoctor !== false;
       }
       return out;
     }
@@ -491,8 +638,14 @@
       for(var key in input){
         if(!Object.prototype.hasOwnProperty.call(input, key)) continue;
         if(key === "techViewIntake" || input[key] === undefined) continue;
-        if(key === "doctorInitials") base[key] = cloneAccountSettingValue(key, input[key]);
-        else base[key] = input[key];
+	        if(key === "doctorInitials" || key === "doctorBadgeStyles") base[key] = cloneAccountSettingValue(key, input[key]);
+	        else base[key] = input[key];
+	      }
+      if(input.showRoomCardDoctorName == null && input.showRoomCardDoctor != null){
+        base.showRoomCardDoctorName = input.showRoomCardDoctor !== false;
+      }
+      if(input.showRoomCardDoctorBadge == null && input.showRoomCardDoctor != null){
+        base.showRoomCardDoctorBadge = input.showRoomCardDoctor !== false;
       }
       var accountOnly = normalizeAccountSettings(base);
       for(var i=0;i<ACCOUNT_LOCAL_SETTING_KEYS.length;i++){
@@ -584,6 +737,12 @@
         if(input[key] == null) out[key] = cloneAccountSettingValue(key, ACCOUNT_LOCAL_SETTING_DEFAULTS[key]);
         else out[key] = cloneAccountSettingValue(key, input[key]);
       }
+      if(input.showRoomCardDoctorName == null && input.showRoomCardDoctor != null){
+        out.showRoomCardDoctorName = input.showRoomCardDoctor !== false;
+      }
+      if(input.showRoomCardDoctorBadge == null && input.showRoomCardDoctor != null){
+        out.showRoomCardDoctorBadge = input.showRoomCardDoctor !== false;
+      }
       return out;
     }
     function readStoredWindowAppearanceSettings(scope){
@@ -652,7 +811,7 @@
 	        return;
 	      }
 	      noteSettingsRemoteQueued("Saving changes…");
-	      scheduleRemoteSave("config");
+	      scheduleRemoteSave("userSettings");
 	    }
 	    function persistWindowUiSettings(){
 	      if(!state || !state.settings) return;
@@ -665,10 +824,101 @@
 	      saveLocal();
 	      noteSettingsLocalSaved("Saved in this window");
 	    }
-    function normalizeSimpleName(value){
-      return String(value == null ? "" : value).replace(/\s+/g, " ").trim();
-    }
-    function collectDuplicateKeys(list, mapper){
+	    function normalizeSimpleName(value){
+	      return String(value == null ? "" : value).replace(/\s+/g, " ").trim();
+	    }
+	    function normalizeRoomQuickNotesValue(value){
+	      var source = Array.isArray(value) ? value : (value == null ? [] : [value]);
+	      var seen = Object.create(null);
+	      var out = [];
+	      for(var i=0;i<source.length;i++){
+	        var label = normalizeSimpleName(source[i]);
+	        if(!label) continue;
+	        var key = label.toLowerCase();
+	        if(seen[key]) continue;
+	        seen[key] = true;
+	        out.push(label);
+	      }
+	      return out;
+	    }
+	    function getRoomQuickNotes(room){
+	      if(!room) return [];
+	      var notes = normalizeRoomQuickNotesValue(room.quickNotes);
+	      if(!notes.length) notes = normalizeRoomQuickNotesValue(room.quickNote);
+	      return notes;
+	    }
+	    function setRoomQuickNotes(room, value){
+	      if(!room) return [];
+	      var notes = normalizeRoomQuickNotesValue(value);
+	      room.quickNotes = notes;
+	      room.quickNote = notes.length ? notes[0] : "";
+	      return notes;
+	    }
+	    function getConfiguredQuickNoteLabels(){
+	      var source = state && Array.isArray(state.quickNotes) ? state.quickNotes : [];
+	      return normalizeRoomQuickNotesValue(source);
+	    }
+	    function buildQuickNoteChoiceListHtml(selectedNotes, options){
+	      options = options || {};
+	      var labels = getConfiguredQuickNoteLabels();
+	      if(!labels.length){
+	        return '<div class="muted quickNotePickerEmpty">No quick notes configured.</div>';
+	      }
+	      var selected = normalizeRoomQuickNotesValue(selectedNotes);
+	      var selectedMap = Object.create(null);
+	      for(var s=0;s<selected.length;s++) selectedMap[selected[s].toLowerCase()] = true;
+	      var inputName = options.inputName || "quickNotes";
+	      var dataField = options.dataField === false ? "" : ' data-field="quickNotes"';
+	      var html = "";
+	      for(var i=0;i<labels.length;i++){
+	        var label = labels[i];
+	        var checked = selectedMap[label.toLowerCase()] ? " checked" : "";
+	        html += '<label class="quickNoteChoice">'
+	          + '<input type="checkbox" name="' + escapeHtml(inputName) + '" value="' + escapeHtml(label) + '"' + checked + dataField + ' data-quick-note-choice="1">'
+	          + '<span>' + escapeHtml(label) + '</span>'
+	        + '</label>';
+	      }
+	      return html;
+	    }
+	    function getQuickNoteSelectionSummary(notes){
+	      notes = normalizeRoomQuickNotesValue(notes);
+	      if(!notes.length) return "Select quick notes";
+	      if(notes.length <= 2) return notes.join(", ");
+	      return notes.length + " selected";
+	    }
+	    function buildQuickNoteDropdownHtml(selectedNotes, options){
+	      options = options || {};
+	      var id = options.id ? ' id="' + escapeHtml(options.id) + '"' : "";
+	      var selected = normalizeRoomQuickNotesValue(selectedNotes);
+	      var choiceHtml = buildQuickNoteChoiceListHtml(selected, {
+	        inputName: options.inputName || "quickNotes",
+	        dataField: options.dataField
+	      });
+	      return '<details class="quickNoteDropdown"' + id + '>'
+	        + '<summary class="quickNoteDropdownSummary">'
+	          + '<span class="quickNoteDropdownText" data-quick-note-summary="1">' + escapeHtml(getQuickNoteSelectionSummary(selected)) + '</span>'
+	          + '<span class="quickNoteDropdownChevron" aria-hidden="true">v</span>'
+	        + '</summary>'
+	        + '<div class="quickNoteDropdownMenu">'
+	          + '<div class="quickNotePicker quickNotePickerDropdown">' + choiceHtml + '</div>'
+	        + '</div>'
+	      + '</details>';
+	    }
+	    function refreshQuickNoteDropdownSummary(root){
+	      if(typeof root === "string") root = $(root);
+	      if(!root || !root.querySelector) return;
+	      var summary = root.querySelector('[data-quick-note-summary="1"]');
+	      if(summary) summary.textContent = getQuickNoteSelectionSummary(readQuickNoteChoiceValues(root));
+	    }
+	    function readQuickNoteChoiceValues(root){
+	      if(typeof root === "string") root = $(root);
+	      if(!root || !root.querySelectorAll) return [];
+	      var checked = root.querySelectorAll('input[data-quick-note-choice="1"]:checked');
+	      var values = [];
+	      for(var i=0;i<checked.length;i++) values.push(checked[i].value);
+	      return normalizeRoomQuickNotesValue(values);
+	    }
+	    function collectDuplicateKeys(list, mapper){
       var seen = Object.create(null);
       var dupes = Object.create(null);
       for(var i=0;i<list.length;i++){
@@ -710,11 +960,12 @@
             break;
           }
         }
-        if(!room.colorLabelId || !hasRoomColor){
-          room.colorLabelId = targetState.settings.defaultColorLabelId;
-        }
-        targetState.rooms[r] = room;
-      }
+	        if(!room.colorLabelId || !hasRoomColor){
+	          room.colorLabelId = targetState.settings.defaultColorLabelId;
+	        }
+	        setRoomQuickNotes(room, getRoomQuickNotes(room));
+	        targetState.rooms[r] = room;
+	      }
 
       if(!Array.isArray(targetState.doctors)) targetState.doctors = [];
       for(var d=0;d<targetState.doctors.length;d++){
@@ -729,13 +980,26 @@
       targetState.settings.displayCols = Math.max(1, Number(targetState.settings.displayCols || 4));
       targetState.settings.displayRows = Math.max(0, Number(targetState.settings.displayRows || 0));
       targetState.settings.displayCardScale = Math.max(0.8, Math.min(1.6, Number(targetState.settings.displayCardScale || 1)));
+      targetState.settings.roomCardLineHeight = Math.max(1, Math.min(1.8, Number(targetState.settings.roomCardLineHeight || 1.35)));
       targetState.settings.fontBase = Math.max(10, Number(targetState.settings.fontBase || 14));
       targetState.settings.fontCard = Math.max(10, Number(targetState.settings.fontCard || 14));
       targetState.settings.fontTimer = Math.max(12, Number(targetState.settings.fontTimer || 18));
       targetState.settings.fontInput = Math.max(10, Number(targetState.settings.fontInput || 14));
       targetState.settings.fontDisplay = Math.max(10, Number(targetState.settings.fontDisplay || 14));
       targetState.settings.timerAlert1AtSec = Math.max(0, Number(targetState.settings.timerAlert1AtSec || 0));
-      targetState.settings.timerAlert2AtSec = Math.max(targetState.settings.timerAlert1AtSec, Number(targetState.settings.timerAlert2AtSec || 0));
+	      targetState.settings.timerAlert2AtSec = Math.max(targetState.settings.timerAlert1AtSec, Number(targetState.settings.timerAlert2AtSec || 0));
+	      targetState.settings.practiceNameColor = String(targetState.settings.practiceNameColor || "#fecdd3");
+	      targetState.settings.showPracticeNameBadge = targetState.settings.showPracticeNameBadge !== false;
+	      targetState.settings.practiceLogoScale = Math.max(0.6, Math.min(5, Number(targetState.settings.practiceLogoScale || 1)));
+	      targetState.settings.practiceLogoInvert = targetState.settings.practiceLogoInvert === true;
+	      targetState.settings.doctorInitialBadgeScale = Math.max(0.7, Math.min(2, Number(targetState.settings.doctorInitialBadgeScale || 1)));
+	      targetState.settings.doctorInitialBadgeFontSize = Math.max(10, Math.min(28, Number(targetState.settings.doctorInitialBadgeFontSize || 16)));
+	      targetState.settings.doctorInitialBadgeColor = String(targetState.settings.doctorInitialBadgeColor || "#0b1220");
+	      targetState.settings.doctorInitialBadgeTextColor = String(targetState.settings.doctorInitialBadgeTextColor || (targetState.settings.displayFontColor || "#e8eefc"));
+	      targetState.settings.doctorBadgeStyles = normalizeDoctorBadgeStylesMap(targetState.settings.doctorBadgeStyles);
+	      targetState.settings.practiceLogoPath = String(targetState.settings.practiceLogoPath || "").trim();
+      targetState.settings.practiceLogoUrl = String(targetState.settings.practiceLogoUrl || "").trim();
+      targetState.settings.practiceLogoUpdatedAt = String(targetState.settings.practiceLogoUpdatedAt || "").trim();
       return targetState;
     }
     function collectSettingsValidationIssues(targetState){
@@ -746,6 +1010,7 @@
       });
       if(duplicateRooms.length){
         issues.push({
+          code: "duplicateRooms",
           severity: "error",
           blocking: true,
           text: "Two rooms have the same name. Give each room its own name so saves do not get mixed up."
@@ -757,6 +1022,7 @@
       });
       if(duplicateDoctors.length){
         issues.push({
+          code: "duplicateDoctors",
           severity: "warn",
           blocking: false,
           text: "Some doctors are listed more than once. RoomBoard can still work, but the list will be confusing."
@@ -767,6 +1033,7 @@
       });
       if(duplicateLabels.length){
         issues.push({
+          code: "duplicateColorLabels",
           severity: "error",
           blocking: true,
           text: "Two color labels have the same name. Give each label its own name before saving."
@@ -774,6 +1041,7 @@
       }
       if(Number(source.settings.timerAlert2AtSec || 0) < Number(source.settings.timerAlert1AtSec || 0)){
         issues.push({
+          code: "timerAlertOrder",
           severity: "warn",
           blocking: false,
           text: "The second timer alert was lower than the first one, so RoomBoard moved it up automatically."
@@ -781,6 +1049,7 @@
       }
       if(!source.colorLabels || !source.colorLabels.length){
         issues.push({
+          code: "missingColorLabels",
           severity: "error",
           blocking: true,
           text: "You need at least one color label so new rooms know which label to use."
@@ -796,10 +1065,26 @@
       }
       return out;
     }
+    function getBlockingAppointmentTypeSettingsIssues(targetState){
+      var issues = collectSettingsValidationIssues(targetState);
+      var out = [];
+      for(var i=0;i<issues.length;i++){
+        if(!issues[i] || !issues[i].blocking) continue;
+        if(issues[i].code === "duplicateColorLabels" || issues[i].code === "missingColorLabels") out.push(issues[i]);
+      }
+      return out;
+    }
     function describeSettingsIssuesForStatus(issues){
       if(!issues || !issues.length) return "";
       if(issues.length === 1) return issues[0].text;
       return issues[0].text + " Fix the other " + (issues.length - 1) + " thing" + (issues.length === 2 ? "" : "s") + " too.";
+    }
+    function describeSettingsIssuesForSaveState(issues, fallback){
+      if(!issues || !issues.length) return fallback || "Fix settings first";
+      var text = String(issues[0] && issues[0].text || "").toLowerCase();
+      if(text.indexOf("room") >= 0) return "Rename duplicate rooms";
+      if(text.indexOf("label") >= 0) return "Rename duplicate labels";
+      return fallback || "Fix settings first";
     }
 		    function resetWindowAppearanceToDefault(){
 		      clearStoredWindowAppearanceSettings(activeAccountSettingsScope);
@@ -917,16 +1202,16 @@
       flushSettingsAutosaveJobs();
       saveLocal();
       if(saveDebounce) clearTimeout(saveDebounce);
-      if(pendingConfigSave || pendingAppointmentTypesSave || pendingBoardSave){
+      if(pendingConfigSave || pendingAppointmentTypesSave || pendingBoardSave || pendingUserSettingsSave){
         flushRemoteSave();
       } else if(!saving && !settingsRemoteSaveQueued){
         setSettingsSaveState("idle", "Autosave on");
       }
     }
 
-    function loadLocal(){
+    function loadLocal(scope){
       try{
-        var raw = localStorage.getItem(getStateStorageKey(getPracticeScope()));
+        var raw = localStorage.getItem(getStateStorageKey(scope || getBootPersistenceScope()));
         if(!raw) return null;
         return JSON.parse(raw);
       }catch(e){ return null; }
@@ -1041,9 +1326,14 @@
       var legacyCardScale = s.settings.cardScale;
       var hadDisplayCardScale = s.settings.displayCardScale != null;
       var hadIntakeCardScale = s.settings.intakeCardScale != null;
+      var hadLegacyRoomCardDoctor = s.settings.showRoomCardDoctor != null;
+      var hadRoomCardDoctorName = s.settings.showRoomCardDoctorName != null;
+      var hadRoomCardDoctorBadge = s.settings.showRoomCardDoctorBadge != null;
       for(var k in DEFAULT_SETTINGS){
         if(s.settings[k] == null) s.settings[k] = DEFAULT_SETTINGS[k];
       }
+      if(hadLegacyRoomCardDoctor && !hadRoomCardDoctorName) s.settings.showRoomCardDoctorName = s.settings.showRoomCardDoctor !== false;
+      if(hadLegacyRoomCardDoctor && !hadRoomCardDoctorBadge) s.settings.showRoomCardDoctorBadge = s.settings.showRoomCardDoctor !== false;
       var defaultColorId = getConfiguredDefaultColorLabelId(s.colorLabels, s.settings.defaultColorLabelId) || (s.colorLabels[0] && s.colorLabels[0].id);
       s.settings.defaultColorLabelId = defaultColorId;
       if(!hadDisplayCardScale && legacyCardScale != null) s.settings.displayCardScale = legacyCardScale;
@@ -1070,18 +1360,20 @@
         if(_c && r.reason !== _c.title) r.reason = _c.title;
         if(r.colorHex == null) r.colorHex = "";
         if(r.doctor == null) r.doctor = "";
-        if(r.tech == null) r.tech = "";
-        if(r.notes == null) r.notes = "";
-        if(r.quickNote == null) r.quickNote = "";
-        if(r.roomReady == null) r.roomReady = false;
+	        if(r.tech == null) r.tech = "";
+	        if(r.notes == null) r.notes = "";
+	        if(r.quickNote == null) r.quickNote = "";
+	        setRoomQuickNotes(r, getRoomQuickNotes(r));
+	        if(r.roomReady == null) r.roomReady = false;
         if(r.doctorReady == null) r.doctorReady = false;
         if(r.needsCleaning == null) r.needsCleaning = false;
-        if(!r.timer) r.timer = { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null };
+        if(!r.timer) r.timer = { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null };
         if(r.timer.elapsedMs == null) r.timer.elapsedMs = 0;
         if(r.timer.running == null) r.timer.running = false;
         if(r.timer.startedAt == null) r.timer.startedAt = null;
         if(r.timer.startedAtIso == null) r.timer.startedAtIso = null;
-        if(!r.cleaningTimer) r.cleaningTimer = { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null };
+        if(r.timer.updatedAtIso == null) r.timer.updatedAtIso = null;
+        if(!r.cleaningTimer) r.cleaningTimer = { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null };
         if(r.activeRoomSessionId == null) r.activeRoomSessionId = null;
         if(r.activeCleaningSessionId == null) r.activeCleaningSessionId = null;
         if(r.lastDischargeSnapshot == null) r.lastDischargeSnapshot = null;
@@ -1089,6 +1381,7 @@
         if(r.cleaningTimer.running == null) r.cleaningTimer.running = false;
         if(r.cleaningTimer.startedAt == null) r.cleaningTimer.startedAt = null;
         if(r.cleaningTimer.startedAtIso == null) r.cleaningTimer.startedAtIso = null;
+        if(r.cleaningTimer.updatedAtIso == null) r.cleaningTimer.updatedAtIso = null;
       }
       return s;
     }
@@ -1121,12 +1414,14 @@
       var rows = Number(state.settings.displayRows || 0);
       var intakeCols = Number(state.settings.intakeCols || 2);
       var displayCardScale = Number(state.settings.displayCardScale || 1);
+      var roomCardLineHeight = Math.max(1, Math.min(1.8, Number(state.settings.roomCardLineHeight || 1.35)));
       var intakeCardScale = Number(state.settings.intakeCardScale || 1);
 
       document.documentElement.style.setProperty("--cols", String(cols));
       document.documentElement.style.setProperty("--rows", String(rows));
       document.documentElement.style.setProperty("--intakeCols", String(intakeCols));
       document.documentElement.style.setProperty("--displayCardScale", String(displayCardScale));
+      document.documentElement.style.setProperty("--roomCardLineHeight", String(roomCardLineHeight));
       document.documentElement.style.setProperty("--intakeCardScale", String(intakeCardScale));
       updateViewportFit();
 
@@ -1223,47 +1518,64 @@
       }
     }
 
-    function getQuickAddDraftFromRoom(room){
-      room = room || {};
-      return {
-        patientName: String(room.patientName || ""),
-        colorLabelId: room.colorLabelId || "",
-        doctor: String(room.doctor || ""),
-        tech: String(room.tech || ""),
-        quickNote: String(room.quickNote || ""),
-        notes: String(room.notes || ""),
+	    function getQuickAddDraftFromRoom(room){
+	      room = room || {};
+	      var activeTimer = room.needsCleaning ? room.cleaningTimer : room.timer;
+	      var quickNotes = getRoomQuickNotes(room);
+	      return {
+	        patientName: String(room.patientName || ""),
+	        colorLabelId: room.colorLabelId || "",
+	        doctor: String(room.doctor || ""),
+	        tech: String(room.tech || ""),
+	        quickNote: quickNotes[0] || "",
+	        quickNotes: quickNotes,
+	        notes: String(room.notes || ""),
         roomReady: !!room.roomReady,
-        doctorReady: !!room.doctorReady
+        doctorReady: !!room.doctorReady,
+        timerElapsedMs: Math.max(0, Number(computeElapsed(activeTimer) || 0)),
+        timerDirty: false,
+        timerInputValue: ""
       };
     }
 
-    function readQuickAddFormDraft(){
-      var roomSelect = $("quickAddRoomSelect");
-      if(!roomSelect) return null;
-      return {
+	    function readQuickAddFormDraft(){
+	      var roomSelect = $("quickAddRoomSelect");
+	      if(!roomSelect) return null;
+	      var fallbackRoomReady = !!(quickAddDraftState && quickAddDraftState.roomReady);
+	      var quickNotes = readQuickNoteChoiceValues("quickAddQuickNotes");
+	      return {
         roomId: String(roomSelect.value || ""),
         patientName: String(($("quickAddPatientName") && $("quickAddPatientName").value) || ""),
         colorLabelId: String(($("quickAddColorLabelId") && $("quickAddColorLabelId").value) || ""),
-        doctor: String(($("quickAddDoctor") && $("quickAddDoctor").value) || ""),
-        tech: String(($("quickAddTech") && $("quickAddTech").value) || ""),
-        quickNote: String(($("quickAddQuickNote") && $("quickAddQuickNote").value) || ""),
-        notes: String(($("quickAddNotes") && $("quickAddNotes").value) || ""),
-        roomReady: getQuickAddSwitchState("quickAddRoomReadySwitch"),
-        doctorReady: getQuickAddSwitchState("quickAddDoctorReadySwitch")
+	        doctor: String(($("quickAddDoctor") && $("quickAddDoctor").value) || ""),
+	        tech: String(($("quickAddTech") && $("quickAddTech").value) || ""),
+	        quickNote: quickNotes[0] || "",
+	        quickNotes: quickNotes,
+	        notes: String(($("quickAddNotes") && $("quickAddNotes").value) || ""),
+        roomReady: $("quickAddRoomReadySwitch") ? getQuickAddSwitchState("quickAddRoomReadySwitch") : fallbackRoomReady,
+        doctorReady: getQuickAddSwitchState("quickAddDoctorReadySwitch"),
+        timerElapsedMs: Math.max(0, Number(quickAddDraftState && quickAddDraftState.timerElapsedMs || 0)),
+        timerDirty: !!(quickAddDraftState && quickAddDraftState.timerDirty),
+        timerInputValue: String(($("quickAddTimerInput") && $("quickAddTimerInput").value) || (quickAddDraftState && quickAddDraftState.timerInputValue) || "")
       };
     }
 
-    function storeQuickAddDraft(draft){
-      quickAddDraftState = {
+	    function storeQuickAddDraft(draft){
+	      var quickNotes = normalizeRoomQuickNotesValue((draft && draft.quickNotes && draft.quickNotes.length) ? draft.quickNotes : (draft && draft.quickNote));
+	      quickAddDraftState = {
         roomId: String(draft && draft.roomId || ""),
         patientName: String(draft && draft.patientName || ""),
         colorLabelId: String(draft && draft.colorLabelId || ""),
-        doctor: String(draft && draft.doctor || ""),
-        tech: String(draft && draft.tech || ""),
-        quickNote: String(draft && draft.quickNote || ""),
-        notes: String(draft && draft.notes || ""),
+	        doctor: String(draft && draft.doctor || ""),
+	        tech: String(draft && draft.tech || ""),
+	        quickNote: quickNotes[0] || "",
+	        quickNotes: quickNotes,
+	        notes: String(draft && draft.notes || ""),
         roomReady: !!(draft && draft.roomReady),
-        doctorReady: !!(draft && draft.doctorReady)
+        doctorReady: !!(draft && draft.doctorReady),
+        timerElapsedMs: Math.max(0, Number(draft && draft.timerElapsedMs || 0)),
+        timerDirty: !!(draft && draft.timerDirty),
+        timerInputValue: String(draft && draft.timerInputValue || "")
       };
     }
 
@@ -1280,6 +1592,70 @@
 
     function resetQuickAddDrafts(){
       quickAddDraftState = null;
+      quickAddTimerAdjustOpen = false;
+    }
+
+    function getQuickAddTimerDisplayMs(room, draft){
+      if(draft && draft.timerDirty) return Math.max(0, Number(draft.timerElapsedMs || 0));
+      var activeTimer = room && room.needsCleaning ? room.cleaningTimer : room && room.timer;
+      return Math.max(0, Number(computeElapsed(activeTimer) || 0));
+    }
+
+    function parseQuickAddTimerInputToMs(value){
+      var raw = String(value || "").trim();
+      if(!raw) return null;
+      if(/^\d+(?:\.\d+)?$/.test(raw)) return Math.round(Number(raw) * 60 * 1000);
+      var parts = raw.split(":");
+      if(parts.length === 2 || parts.length === 3){
+        for(var i=0;i<parts.length;i++){
+          if(!/^\d+$/.test(parts[i])) return null;
+        }
+        var hours = 0;
+        var minutes = 0;
+        var seconds = 0;
+        if(parts.length === 2){
+          minutes = Number(parts[0] || 0);
+          seconds = Number(parts[1] || 0);
+        } else {
+          hours = Number(parts[0] || 0);
+          minutes = Number(parts[1] || 0);
+          seconds = Number(parts[2] || 0);
+        }
+        if(seconds >= 60 || minutes >= 60 && parts.length === 3) return null;
+        return Math.max(0, ((hours * 60 + minutes) * 60 + seconds) * 1000);
+      }
+      return null;
+    }
+
+    function setQuickAddTimerDraft(roomId, elapsedMs, options){
+      options = options || {};
+      var draft = readQuickAddFormDraft() || quickAddDraftState || getQuickAddDraftFromRoom(findRoomById(roomId));
+      draft.roomId = String(roomId || draft.roomId || "");
+      draft.timerElapsedMs = Math.max(0, Number(elapsedMs || 0));
+      draft.timerDirty = options.timerDirty !== false;
+      if(options.timerInputValue != null) draft.timerInputValue = String(options.timerInputValue);
+      storeQuickAddDraft(draft);
+    }
+
+    function applyDraftTimerToRoom(room, elapsedMs, referenceNowIso){
+      if(!room) return;
+      var timer = room.needsCleaning ? room.cleaningTimer : room.timer;
+      if(!timer) timer = room.needsCleaning ? (room.cleaningTimer = { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null }) : (room.timer = { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null });
+      var normalizedElapsed = Math.max(0, Number(elapsedMs || 0));
+      var normalizedNowIso = normalizeServerNowIso(referenceNowIso) || getEstimatedServerNowIso();
+      var startedAtMs = Date.parse(normalizedNowIso);
+      var shouldRun = !!timer.running;
+      if(!shouldRun && normalizedElapsed > 0 && (room.needsCleaning || roomHasAssignedPatient(room))) shouldRun = true;
+      timer.elapsedMs = normalizedElapsed;
+      timer.running = shouldRun;
+      timer.startedAt = shouldRun && isFinite(startedAtMs) ? startedAtMs : null;
+      timer.startedAtIso = shouldRun ? normalizedNowIso : null;
+      timer.updatedAtIso = normalizedNowIso;
+      if(typeof normalizeRoomTimerModes === "function") normalizeRoomTimerModes(room);
+      if(shouldRun){
+        if(room.needsCleaning) logCleaningSessionStart(room);
+        else if(roomHasAssignedPatient(room)) logRoomSessionStart(room);
+      }
     }
 
     function renderQuickAddForm(roomId, shouldFocusPatient){
@@ -1295,6 +1671,26 @@
       if(!room) return;
       selectedRoomId = room.id;
       var draft = quickAddDraftState || getQuickAddDraftFromRoom(room);
+      var timerDisplayMs = getQuickAddTimerDisplayMs(room, draft);
+      var timerLabel = room.needsCleaning ? "Cleaning timer" : "Room timer";
+      var timerAdjustControls = quickAddTimerAdjustOpen
+        ? (
+          '<div class="quickAddTimerControls">'
+            + '<div class="quickAddTimerButtons">'
+              + '<button class="btn sm" data-action="quickAddTimerDelta" data-delta-minutes="-5" type="button">-5m</button>'
+              + '<button class="btn sm" data-action="quickAddTimerDelta" data-delta-minutes="-1" type="button">-1m</button>'
+              + '<button class="btn sm" data-action="quickAddTimerDelta" data-delta-minutes="1" type="button">+1m</button>'
+              + '<button class="btn sm" data-action="quickAddTimerDelta" data-delta-minutes="5" type="button">+5m</button>'
+            + '</div>'
+            + '<div class="quickAddTimerManual">'
+              + '<input id="quickAddTimerInput" type="text" value="' + escapeHtml(String(draft.timerInputValue || "")) + '" placeholder="Minutes or mm:ss" />'
+              + '<button class="btn sm" data-action="applyQuickAddTimer" type="button">Set</button>'
+              + '<button class="btn sm" data-action="resetQuickAddTimer" type="button">Reset</button>'
+            + '</div>'
+            + '<div class="muted quickAddTimerHelp">Current time: ' + escapeHtml(formatTime(timerDisplayMs)) + '. Enter minutes like 12 or use mm:ss like 12:30.</div>'
+          + '</div>'
+        )
+        : "";
 
       var roomOptions = "";
       for(var i=0;i<state.rooms.length;i++){
@@ -1324,13 +1720,11 @@
         colorOptions += '<option ' + sel2 + 'value="' + escapeHtml(cl.id) + '">' + escapeHtml(cl.title) + '</option>';
       }
 
-      var quickNoteOptions = "";
-      for(var q=0; q<state.quickNotes.length; q++){
-        var qn = state.quickNotes[q];
-        var qsel = (qn === draft.quickNote) ? "selected " : "";
-        var quickNoteLabel = qn ? qn : "(none)";
-        quickNoteOptions += '<option ' + qsel + 'value="' + escapeHtml(qn) + '">' + escapeHtml(quickNoteLabel) + '</option>';
-      }
+	      var quickNoteDropdown = buildQuickNoteDropdownHtml(draft.quickNotes || draft.quickNote, {
+	        id: "quickAddQuickNotes",
+	        inputName: "quickAddQuickNotes",
+	        dataField: false
+	      });
 
       doctorOptions = '<option ' + (!draft.doctor ? 'selected ' : '') + 'value="">None</option>';
       for(var d2=0; d2<state.doctors.length; d2++){
@@ -1343,31 +1737,27 @@
         doctorOptions += '<option ' + doctorSelected + 'value="' + escapeHtml(doctorName) + '">' + escapeHtml(doctorOptionLabel) + '</option>';
       }
 
-      body.innerHTML =
-        '<div class="card">'
-          + '<div class="quickAddCurrentRoom">'
-            + '<h3 id="quickAddCurrentRoom">'+escapeHtml(room.name)+'</h3>'
-            + '<div class="muted">Selecting a room loads its current values so you can add or update it quickly from Display.</div>'
-          + '</div>'
+	      body.innerHTML =
+	        '<div class="card">'
+	          + '<div class="quickAddCurrentRoom">'
+	            + '<h3 id="quickAddCurrentRoom">'+escapeHtml(room.name)+'</h3>'
+	          + '</div>'
           + '<div class="quickAddGrid">'
             + '<div class="field full"><label>Room</label><select id="quickAddRoomSelect">'+roomOptions+'</select></div>'
             + '<div class="field full"><label>Patient name</label><input id="quickAddPatientName" type="text" value="'+escapeHtml(draft.patientName)+'" placeholder="e.g., Bella" /></div>'
             + '<div class="field"><label>Type</label><select id="quickAddColorLabelId">'+colorOptions+'</select></div>'
             + '<div class="field"><label>Doctor</label><select id="quickAddDoctor">'+doctorOptions+'</select></div>'
             + '<div class="field"><label>Tech</label><input id="quickAddTech" type="text" value="'+escapeHtml(draft.tech)+'" placeholder="e.g., Alex" /></div>'
-            + '<div class="field"><label>Quick note</label><select id="quickAddQuickNote">'+quickNoteOptions+'</select></div>'
-            + '<div class="field full"><label>Status notes</label><textarea id="quickAddNotes" placeholder="Quick notes…">'+escapeHtml(draft.notes)+'</textarea></div>'
-          + '</div>'
-          + '<div class="quickAddToggleRow">'
-            + '<div class="toggle"><div><div style="font-weight:700;">Room ready</div><div class="muted">Patient ready in room</div></div><div class="switch '+(draft.roomReady ? 'on' : '')+'" data-action="toggleQuickAddRoomReady" id="quickAddRoomReadySwitch"><div class="knob"></div></div></div>'
-            + '<div class="toggle"><div><div style="font-weight:700;">Doctor ready</div><div class="muted">Doctor ready to go in</div></div><div class="switch '+(draft.doctorReady ? 'on' : '')+'" data-action="toggleQuickAddDoctorReady" id="quickAddDoctorReadySwitch"><div class="knob"></div></div></div>'
+            + '<div class="field"><label>Doctor ready</label><div class="toggle"><div><div style="font-weight:700;">Doctor ready</div><div class="muted">Doctor ready to go in</div></div><div class="switch '+(draft.doctorReady ? 'on' : '')+'" data-action="toggleQuickAddDoctorReady" id="quickAddDoctorReadySwitch"><div class="knob"></div></div></div></div>'
+	            + '<div class="field"><label>Quick notes</label>'+quickNoteDropdown+'</div>'
+	            + '<div class="field quickAddTimerField"><label>' + escapeHtml(timerLabel) + '</label><div class="quickAddTimerSummary"><div class="quickAddTimerCurrent"><strong>' + escapeHtml(formatTime(timerDisplayMs)) + '</strong><span class="muted">' + (draft.timerDirty ? 'Will update on save' : ('Current ' + timerLabel.toLowerCase())) + '</span></div><button class="btn sm" data-action="toggleQuickAddTimerAdjust" type="button">' + (quickAddTimerAdjustOpen ? 'Hide' : 'Adjust') + '</button></div>' + timerAdjustControls + '</div>'
+	            + '<div class="field full"><label>Status notes</label><textarea id="quickAddNotes" placeholder="Status notes...">'+escapeHtml(draft.notes)+'</textarea></div>'
           + '</div>'
           + '<div class="actions">'
             + '<button class="btn sm" data-action="cancelQuickAdd" type="button">Cancel</button>'
             + '<button class="btn sm primary" data-action="saveQuickAdd" type="button">Save to room</button>'
           + '</div>'
         + '</div>';
-      setQuickAddSwitchState("quickAddRoomReadySwitch", !!draft.roomReady);
       setQuickAddSwitchState("quickAddDoctorReadySwitch", !!draft.doctorReady);
 
       if(shouldFocusPatient){
@@ -1397,28 +1787,27 @@
     }
 
     async function saveQuickAdd(){
-      var roomSelect = $("quickAddRoomSelect");
-      if(!roomSelect) return;
-      var room = findRoomById(roomSelect.value);
+      var draft = readQuickAddFormDraft();
+      if(!draft) return;
+      var room = findRoomById(draft.roomId);
       if(!room) return;
       var hadPatientBefore = roomHasAssignedPatient(room);
 
-      room.patientName = String($("quickAddPatientName").value || "").trim();
-      room.colorLabelId = $("quickAddColorLabelId").value || room.colorLabelId;
-      room.colorHex = "";
-      room.doctor = $("quickAddDoctor").value || "";
-      room.tech = String($("quickAddTech").value || "").trim();
-      room.quickNote = $("quickAddQuickNote").value || "";
-      room.notes = String($("quickAddNotes").value || "").trim();
-      room.roomReady = getQuickAddSwitchState("quickAddRoomReadySwitch");
-      room.doctorReady = getQuickAddSwitchState("quickAddDoctorReadySwitch");
+      room.patientName = String(draft.patientName || "").trim();
+      room.colorLabelId = draft.colorLabelId || room.colorLabelId;
+	      room.colorHex = "";
+	      room.doctor = draft.doctor || "";
+	      room.tech = String(draft.tech || "").trim();
+	      setRoomQuickNotes(room, draft.quickNotes || draft.quickNote || []);
+	      room.notes = String(draft.notes || "").trim();
+      room.doctorReady = !!draft.doctorReady;
       room.lastDischargeSnapshot = null;
-      clearQuickAddDraft();
 
       var selectedColor = getColorById(room.colorLabelId);
       if(selectedColor) room.reason = selectedColor.title;
 
       var serverNowIso = getEstimatedServerNowIso();
+      if(draft.timerDirty) applyDraftTimerToRoom(room, draft.timerElapsedMs, serverNowIso);
       Promise.resolve(syncRoomSessionAfterOccupancyChange(room, hadPatientBefore, {
         autoStartTimer: true,
         stopTimerWhenEmpty: true,
@@ -1429,6 +1818,7 @@
       });
 
       saveLocal();
+      clearQuickAddDraft();
       closeQuickAdd();
       requestBoardRoomRefresh([room.id], { includeIntake: false });
       setTab("display");
@@ -1462,12 +1852,22 @@
 	    function clearDraggedRoomId(){
 	      window.__dragFromRoomId = null;
 	    }
+	    var recentRoomSwapKey = "";
+	    var recentRoomSwapAt = 0;
 	    function swapRoomsById(fromId, toId, options){
 	      options = options || {};
 	      if(!fromId || !toId || fromId === toId) return false;
+	      var swapKey = [String(fromId), String(toId)].sort().join("::");
+	      var now = Date.now();
+	      if(recentRoomSwapKey === swapKey && (now - recentRoomSwapAt) < 350){
+	        return false;
+	      }
 	      var fromRoom = findRoomById(fromId);
 	      var toRoom = findRoomById(toId);
 	      if(!fromRoom || !toRoom) return false;
+	      recentRoomSwapKey = swapKey;
+	      recentRoomSwapAt = now;
+	      holdRemoteUpdates(Math.max(1200, CHANGE_INTERACTION_HOLD_MS || 0));
 	      swapRoomContents(fromRoom, toRoom);
 	      requestBoardRoomRefresh([fromId, toId], { includeIntake: false });
 	      commitBoardInBackground({ immediate: !!options.immediate });
@@ -1477,7 +1877,7 @@
 	      // Swap room state while keeping the physical room ids/names in place.
 	      // This keeps flags, notes, timers, and cleaning/session state attached to the moved patient.
 	      var fields = [
-	        "patientName","reason","colorLabelId","colorHex","doctor","tech","notes","quickNote",
+		        "patientName","reason","colorLabelId","colorHex","doctor","tech","notes","quickNote","quickNotes",
         "roomReady","doctorReady","needsCleaning","timer","cleaningTimer",
         "activeRoomSessionId","activeCleaningSessionId","lastDischargeSnapshot"
       ];
@@ -1506,6 +1906,96 @@ function applyFonts(){
 	      document.documentElement.style.setProperty("--fontTimer", String(state.settings.fontTimer || 18) + "px");
 	      document.documentElement.style.setProperty("--fontInput", String(state.settings.fontInput || 14) + "px");
 	      document.documentElement.style.setProperty("--fontDisplay", String(state.settings.fontDisplay || 14) + "px");
+	    }
+
+    function rgbaFromHex(hex, alpha){
+      var rgb = hexToRgb(hex);
+      if(!rgb) return "";
+      return "rgba(" + rgb.r + "," + rgb.g + "," + rgb.b + "," + String(alpha) + ")";
+    }
+
+    function applyPracticeNameBadgeColors(){
+      var root = document.documentElement;
+      var fallback = "#fecdd3";
+      var color = String(state && state.settings ? (state.settings.practiceNameColor || fallback) : fallback).trim();
+      if(!hexToRgb(color)) color = fallback;
+      root.style.setProperty("--practiceBadgeText", color);
+      root.style.setProperty("--practiceBadgeBorder", rgbaFromHex(color, 0.42) || "rgba(251,113,133,.42)");
+      root.style.setProperty("--practiceBadgeBg", rgbaFromHex(color, 0.16) || "rgba(127,29,29,.34)");
+    }
+
+    function applyPracticeNameBadgeVisibility(){
+      var authBanner = $("authBanner");
+      if(!authBanner) return;
+      var badgeEnabled = !(state && state.settings && state.settings.showPracticeNameBadge === false);
+      var loggedIn = !!currentUserId;
+      authBanner.hidden = loggedIn ? (!currentPracticeName || !badgeEnabled) : false;
+    }
+
+    function buildPracticeLogoSrc(rawUrl, updatedAt){
+      var url = String(rawUrl || "").trim();
+      var stamp = String(updatedAt || "").trim();
+      if(!url) return "";
+      if(!stamp) return url;
+      try{
+        var parsed = new URL(url, window.location.href);
+        parsed.searchParams.set("v", stamp);
+        return parsed.toString();
+      }catch(e){
+        return url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=" + encodeURIComponent(stamp);
+      }
+    }
+
+    function applyPracticeLogo(){
+      var wordmark = $("brandWordmark");
+      var logo = $("brandLogoImage");
+      if(!wordmark || !logo) return;
+      var logoUrl = String(state && state.settings ? (state.settings.practiceLogoUrl || "") : "").trim();
+      var updatedAt = String(state && state.settings ? (state.settings.practiceLogoUpdatedAt || "") : "").trim();
+      if(!logoUrl){
+        wordmark.hidden = false;
+        logo.hidden = true;
+        logo.removeAttribute("src");
+        delete logo.dataset.currentSrc;
+        return;
+      }
+      var nextSrc = buildPracticeLogoSrc(logoUrl, updatedAt);
+      if(logo.dataset.currentSrc !== nextSrc){
+        logo.dataset.currentSrc = nextSrc;
+        logo.src = nextSrc;
+      }
+      logo.alt = (currentPracticeName ? currentPracticeName + " logo" : "Clinic logo");
+      logo.onerror = function(){
+        this.hidden = true;
+        wordmark.hidden = false;
+      };
+      logo.hidden = false;
+      wordmark.hidden = true;
+    }
+
+	    function applyPracticeBranding(){
+	      document.documentElement.style.setProperty("--practiceLogoScale", String(Math.max(0.6, Math.min(5, Number(state && state.settings ? (state.settings.practiceLogoScale || 1) : 1)))));
+	      document.documentElement.style.setProperty("--practiceLogoColorFilter", state && state.settings && state.settings.practiceLogoInvert === true ? "invert(1)" : "invert(0)");
+	      applyPracticeNameBadgeColors();
+	      applyPracticeNameBadgeVisibility();
+	      applyPracticeLogo();
+	    }
+
+	    function applyDoctorInitialBadgeStyle(){
+	      var root = document.documentElement;
+	      var scale = Math.max(0.7, Math.min(2, Number(state && state.settings ? (state.settings.doctorInitialBadgeScale || 1) : 1)));
+	      var fontSize = Math.max(10, Math.min(28, Number(state && state.settings ? (state.settings.doctorInitialBadgeFontSize || 16) : 16)));
+	      var bgFallback = "#0b1220";
+	      var textFallback = String(state && state.settings ? (state.settings.displayFontColor || "#e8eefc") : "#e8eefc");
+	      var bgColor = String(state && state.settings ? (state.settings.doctorInitialBadgeColor || bgFallback) : bgFallback).trim();
+	      var textColor = String(state && state.settings ? (state.settings.doctorInitialBadgeTextColor || textFallback) : textFallback).trim();
+	      if(!hexToRgb(bgColor)) bgColor = bgFallback;
+	      if(!hexToRgb(textColor)) textColor = textFallback;
+	      root.style.setProperty("--doctorInitBadgeScale", String(scale));
+	      root.style.setProperty("--doctorInitBadgeFontSize", String(fontSize) + "px");
+	      root.style.setProperty("--doctorInitBadgeBg", rgbaFromHex(bgColor, 0.82) || "rgba(11,18,32,.82)");
+	      root.style.setProperty("--doctorInitBadgeText", textColor);
+	      root.style.setProperty("--doctorInitBadgeBorder", rgbaFromHex(bgColor, 0.94) || "rgba(11,18,32,.94)");
 	    }
 
 	    function applyStopwatchStyle(){
@@ -1634,7 +2124,7 @@ function applyDisplayColors(){
 
     function stopRoomTimer(room, resetElapsed, stoppedAtIso){
       if(!room) return;
-      room.timer = room.timer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null };
+      room.timer = room.timer || { elapsedMs: 0, running: false, startedAt: null, startedAtIso: null, updatedAtIso: null };
       applyTimerStopAt(room.timer, stoppedAtIso || isoNow(), resetElapsed);
     }
 
@@ -1715,19 +2205,22 @@ function applyDisplayColors(){
       };
     }
 
-    async function syncRoomSessionAfterOccupancyChange(room, hadPatientBefore, options){
-      if(!room) return;
-      options = options || {};
-      var hasPatientNow = roomHasAssignedPatient(room);
+	    async function syncRoomSessionAfterOccupancyChange(room, hadPatientBefore, options){
+	      if(!room) return;
+	      options = options || {};
+	      var hasPatientNow = roomHasAssignedPatient(room);
 
-      if(hasPatientNow){
-        if(options.autoStartTimer){
-          var startIso = options.serverNowIso || await getServerNowIso();
-          maybeAutoStartTimer(room, startIso);
-        }
-        logRoomSessionStart(room);
-        return;
-      }
+	      if(hasPatientNow){
+	        var startIso = options.serverNowIso || await getServerNowIso();
+	        if(room.needsCleaning || room.activeCleaningSessionId || timerHasProgress(room.cleaningTimer)){
+	          clearRoomCleaning(room, false, startIso);
+	        }
+	        if(options.autoStartTimer){
+	          maybeAutoStartTimer(room, startIso);
+	        }
+	        logRoomSessionStart(room);
+	        return;
+	      }
 
       if(hadPatientBefore || room.activeRoomSessionId){
         logRoomSessionEnd(room, captureRoomSessionEndSnapshot(room, { endedAtIso: options.serverNowIso }));

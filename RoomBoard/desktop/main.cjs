@@ -133,6 +133,14 @@ function closeStaticServer() {
   }
 }
 
+function isAllowedAppUrl(url, baseUrl) {
+  try {
+    return new URL(url).origin === new URL(baseUrl).origin;
+  } catch (_error) {
+    return false;
+  }
+}
+
 async function createMainWindow() {
   const { port } = await ensureStaticServer();
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -164,7 +172,7 @@ async function createMainWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(baseUrl)) {
+    if (isAllowedAppUrl(url, baseUrl)) {
       return { action: "allow" };
     }
 
@@ -173,7 +181,7 @@ async function createMainWindow() {
   });
 
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (url.startsWith(baseUrl)) {
+    if (isAllowedAppUrl(url, baseUrl)) {
       return;
     }
 

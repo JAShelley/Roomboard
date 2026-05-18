@@ -1,0 +1,65 @@
+name: Capture Windows Build
+
+on:
+  push:
+    branches:
+      - main
+    tags-ignore:
+      - "v*"
+    paths:
+      - ".github/workflows/capture-windows-build.yml"
+      - ".github/workflows/release-capture-windows.yml"
+      - "RoomBoard/**"
+  pull_request:
+    paths:
+      - ".github/workflows/capture-windows-build.yml"
+      - ".github/workflows/release-capture-windows.yml"
+      - "RoomBoard/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-capture-windows:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: RoomBoard
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: RoomBoard/package-lock.json
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build Capture Windows installer
+        run: npm run capture:dist:win
+
+      - name: Upload Capture installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: roomboard-capture-windows-installer-${{ github.sha }}
+          path: |
+            RoomBoard/dist-capture/*.exe
+            RoomBoard/dist-capture/*.blockmap
+            RoomBoard/dist-capture/latest*.yml
+          if-no-files-found: error

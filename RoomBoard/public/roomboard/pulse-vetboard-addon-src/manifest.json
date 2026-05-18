@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "VetBoard Pulse Capture",
+  "version": "1.0.13",
+  "description": "Capture a scheduler appointment on hover/click and send it into VetBoard with the Quick Add panel.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://*.evetpractice.com/*",
+    "https://*.evetpractice.com/*",
+    "http://*.covetrus.com/*",
+    "https://*.covetrus.com/*",
+    "http://*.covetruspulse.com/*",
+    "https://*.covetruspulse.com/*",
+    "http://*.pulsevet.com/*",
+    "https://*.pulsevet.com/*",
+    "http://*/*",
+    "https://*/*",
+    "file:///*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "VetBoard Pulse Capture"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*",
+        "file:///*"
+      ],
+      "js": [
+        "scheduler-capture.js"
+      ],
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_idle"
+    }
+  ]
+}

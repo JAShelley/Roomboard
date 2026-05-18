@@ -1,0 +1,253 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.RoomBoardCaptureHelper-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/sources",
+      "importPath" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/Sources/RoomBoardCaptureHelper/main.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "RoomBoardCaptureHelper",
+      "moduleOutputPath" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/Modules/RoomBoardCaptureHelper.swiftmodule",
+      "objects" : [
+        "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/main.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j8",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "RoomBoardCaptureHelper_main",
+        "-parse-as-library",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "capture_helper_mac"
+      ],
+      "outputFileMapPath" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/main.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/Modules/RoomBoardCaptureHelper.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/Sources/RoomBoardCaptureHelper/main.swift"
+      ],
+      "tempsPath" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "RoomBoardCaptureHelper" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "RoomBoardCaptureHelper",
+      "-package-name",
+      "capture_helper_mac",
+      "-c",
+      "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/Sources/RoomBoardCaptureHelper/main.swift",
+      "-I",
+      "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j8",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "RoomBoardCaptureHelper_main",
+      "-parse-as-library",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "capture_helper_mac",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "RoomBoardCaptureHelper" : [
+
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper-entitlement.plist"
+    },
+    "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/Sources/RoomBoardCaptureHelper/main.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/sources"
+    },
+    "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.build/main.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/RoomBoardCaptureHelper.product/Objects.LinkFileList"
+    },
+    "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/jackson/Desktop/Stats viewer and website copy/RoomBoard/desktop/capture-helper-mac/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}

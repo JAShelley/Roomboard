@@ -1,0 +1,55 @@
+{
+  "appId": "com.roomboard.capture.mac",
+  "artifactName": "RoomBoard-Capture-macOS.${ext}",
+  "directories": {
+    "buildResources": "build",
+    "output": "dist-capture-mac"
+  },
+  "productName": "RoomBoard Capture",
+  "asar": true,
+  "extraMetadata": {
+    "main": "desktop/capture-main.cjs",
+    "name": "roomboard-capture-mac",
+    "description": "Mac appointment capture app for sending scheduler appointments into RoomBoard."
+  },
+  "files": [
+    "desktop/capture-main.cjs",
+    "desktop/capture-preload.cjs",
+    "desktop/capture-ui.html",
+    "desktop/capture-ui.css",
+    "desktop/capture-ui.js",
+    "desktop/capture-overlay.html",
+    "desktop/capture-overlay.js",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "desktop/capture-helper-mac/.build/release",
+      "to": "capture-helper-mac",
+      "filter": [
+        "RoomBoardCaptureHelper"
+      ]
+    }
+  ],
+  "mac": {
+    "category": "public.app-category.productivity",
+    "hardenedRuntime": false,
+    "identity": null,
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
+    ]
+  }
+}
