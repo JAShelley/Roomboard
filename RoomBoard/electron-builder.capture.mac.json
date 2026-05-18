@@ -31,10 +31,14 @@
       ]
     }
   ],
+  "afterPack": "scripts/strip-mac-xattrs.mjs",
   "mac": {
     "category": "public.app-category.productivity",
+    "binaries": [
+      "Contents/Resources/capture-helper-mac/RoomBoardCaptureHelper"
+    ],
     "hardenedRuntime": false,
-    "identity": null,
+    "identity": "-",
     "target": [
       {
         "target": "dmg"
