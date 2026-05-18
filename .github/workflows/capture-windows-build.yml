@@ -23,6 +23,8 @@ permissions:
 jobs:
   build-capture-windows:
     runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
     defaults:
       run:
