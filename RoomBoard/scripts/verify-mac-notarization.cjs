@@ -51,7 +51,14 @@ function verifyApp(appPath) {
 }
 
 function verifyArtifact(artifactPath) {
-  run("spctl", ["--assess", "--verbose=4", "--type", "open", artifactPath]);
+  const assessment = run("spctl", ["--assess", "--verbose=4", "--type", "open", artifactPath], { required: false });
+  if (assessment.status !== 0) {
+    const output = `${assessment.stderr || ""}\n${assessment.stdout || ""}`;
+    if (!output.includes("source=Insufficient Context")) {
+      throw new Error(`Failed to run spctl --assess --verbose=4 --type open ${artifactPath}\n${assessment.stderr || assessment.stdout}`);
+    }
+    console.warn(`Skipping non-fatal Gatekeeper open assessment for ${artifactPath}: Insufficient Context`);
+  }
   run("xcrun", ["stapler", "validate", artifactPath]);
 }
 
