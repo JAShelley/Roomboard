@@ -93,14 +93,6 @@
       url: window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_URL__,
       filename: window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_FILENAME__ || "RoomBoard-Capture-Setup-Windows-x64.exe"
     });
-
-    setupDownloadCard({
-      cardId: "captureMacDownloadCard",
-      linkId: "captureMacDownloadLink",
-      metaId: "captureMacDownloadMeta",
-      url: window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_URL__,
-      filename: window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_FILENAME__ || "RoomBoard-Capture-macOS.dmg"
-    });
   })();
 
   function toast(message, options){
