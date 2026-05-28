@@ -12,6 +12,11 @@ struct Bounds: Codable {
     let height: Double
 }
 
+struct VisualCapture {
+    let bounds: Bounds
+    let imageDataUrl: String?
+}
+
 struct CaptureEvent: Codable {
     let type: String
     let x: Int
@@ -48,10 +53,25 @@ struct RoomBoardCaptureHelper {
 
         if command == "monitor" {
             monitorCursor()
+        } else if command == "copy-selection" {
+            sendCopyShortcut()
         } else {
             let point = currentMouseLocation()
             write(inspect(point: point, type: "capture"))
         }
+    }
+
+    private static func sendCopyShortcut() {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        let cKeyCode = CGKeyCode(8)
+        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: cKeyCode, keyDown: true)
+        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: cKeyCode, keyDown: false)
+        keyDown?.flags = .maskCommand
+        keyUp?.flags = .maskCommand
+        keyDown?.post(tap: .cghidEventTap)
+        keyUp?.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.08)
+        write(StatusEvent(type: "status", message: "Copy shortcut sent."))
     }
 
     private static func monitorCursor() {
@@ -87,8 +107,18 @@ struct RoomBoardCaptureHelper {
         let element = elementAt(point: point)
         let candidate = chooseCandidate(from: element)
         let text = candidate.map(buildText) ?? ""
-        let bounds = candidate.flatMap(readBounds)
+        let accessibilityBounds = candidate.flatMap(readBounds)
+        let visualCapture = captureScreenPreview(point: point, includeImage: type == "capture")
+        let bounds = accessibilityBounds ?? visualCapture?.bounds
         let appInfo = candidate.map(readAppInfo) ?? ("", "")
+        let captureMethod = text.isEmpty && visualCapture?.imageDataUrl != nil
+            ? "mac-screen-preview"
+            : "mac-accessibility"
+        let message = text.isEmpty
+            ? visualCapture?.imageDataUrl != nil
+                ? "Captured screen preview. Fill any missing fields from the preview."
+                : "No readable appointment text under cursor. If this scheduler is image-based, allow Screen Recording for RoomBoard Capture or use clipboard text."
+            : nil
 
         return CaptureEvent(
             type: type,
@@ -100,13 +130,57 @@ struct RoomBoardCaptureHelper {
             automationId: candidate.flatMap { readString($0, kAXIdentifierAttribute) } ?? "",
             className: "",
             bounds: bounds,
-            visualBounds: nil,
-            imageDataUrl: nil,
-            captureMethod: "mac-accessibility",
+            visualBounds: visualCapture?.bounds,
+            imageDataUrl: visualCapture?.imageDataUrl,
+            captureMethod: captureMethod,
             windowTitle: appInfo.0,
             processName: appInfo.1,
-            message: text.isEmpty ? "No readable appointment text under cursor." : nil
+            message: message
         )
+    }
+
+    private static func captureScreenPreview(point: CGPoint, includeImage: Bool) -> VisualCapture? {
+        guard let displayBounds = displayBounds(containing: point) else { return nil }
+
+        let cropWidth = min(520.0, max(1.0, displayBounds.width))
+        let cropHeight = min(260.0, max(1.0, displayBounds.height))
+        let left = clamp(point.x - cropWidth / 2, displayBounds.minX, displayBounds.maxX - cropWidth)
+        let top = clamp(point.y - cropHeight / 2, displayBounds.minY, displayBounds.maxY - cropHeight)
+        let cropRect = CGRect(x: left, y: top, width: cropWidth, height: cropHeight)
+        let bounds = Bounds(left: Double(left), top: Double(top), width: Double(cropWidth), height: Double(cropHeight))
+
+        guard includeImage else {
+            return VisualCapture(bounds: bounds, imageDataUrl: nil)
+        }
+
+        guard let image = CGWindowListCreateImage(cropRect, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution, .nominalResolution]) else {
+            return VisualCapture(bounds: bounds, imageDataUrl: nil)
+        }
+
+        let representation = NSBitmapImageRep(cgImage: image)
+        guard let data = representation.representation(using: .png, properties: [:]) else {
+            return VisualCapture(bounds: bounds, imageDataUrl: nil)
+        }
+
+        return VisualCapture(bounds: bounds, imageDataUrl: "data:image/png;base64,\(data.base64EncodedString())")
+    }
+
+    private static func displayBounds(containing point: CGPoint) -> CGRect? {
+        var displayCount: UInt32 = 0
+        let countError = CGGetActiveDisplayList(0, nil, &displayCount)
+        guard countError == .success, displayCount > 0 else { return nil }
+
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
+        let listError = CGGetActiveDisplayList(displayCount, &displays, &displayCount)
+        guard listError == .success else { return nil }
+
+        let bounds = displays.prefix(Int(displayCount)).map { CGDisplayBounds($0) }
+        return bounds.first { $0.contains(point) } ?? bounds.first
+    }
+
+    private static func clamp(_ value: CGFloat, _ minValue: CGFloat, _ maxValue: CGFloat) -> CGFloat {
+        if maxValue < minValue { return minValue }
+        return min(max(value, minValue), maxValue)
     }
 
     private static func elementAt(point: CGPoint) -> AXUIElement? {

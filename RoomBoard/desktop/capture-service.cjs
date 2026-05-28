@@ -1,0 +1,775 @@
+const { app, BrowserWindow, Menu, Tray, clipboard, globalShortcut, ipcMain, nativeImage, screen } = require("electron");
+const fs = require("fs");
+const path = require("path");
+const { spawn } = require("child_process");
+
+const IS_MAC = process.platform === "darwin";
+const IS_WINDOWS = process.platform === "win32";
+const DEFAULT_CAPTURE_HOTKEY = process.env.ROOMBOARD_CAPTURE_HOTKEY || "CommandOrControl+Shift+R";
+const TRANSPARENT_TRAY_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/ax5Y9kAAAAASUVORK5CYII=";
+const HELPER_CONFIGS = {
+  win32: {
+    name: "Windows",
+    executable: "RoomBoard.Capture.Helper.exe",
+    resourceDir: "capture-helper-windows",
+    legacyResourceDir: "capture-helper",
+    devCandidates: [
+      path.join("capture-helper", "bin", "Release", "net8.0-windows", "win-x64", "publish", "RoomBoard.Capture.Helper.exe"),
+      path.join("capture-helper", "bin", "Release", "net8.0-windows", "RoomBoard.Capture.Helper.exe"),
+      path.join("capture-helper", "bin", "Debug", "net8.0-windows", "RoomBoard.Capture.Helper.exe")
+    ]
+  },
+  darwin: {
+    name: "Mac",
+    executable: "RoomBoardCaptureHelper",
+    resourceDir: "capture-helper-mac",
+    devCandidates: [
+      path.join("capture-helper-mac", ".build", "release", "RoomBoardCaptureHelper"),
+      path.join("capture-helper-mac", ".build", "debug", "RoomBoardCaptureHelper")
+    ]
+  }
+};
+
+function createCaptureService(options = {}) {
+  const captureHotkey = options.captureHotkey || DEFAULT_CAPTURE_HOTKEY;
+  const desktopPath = typeof options.desktopPath === "function"
+    ? options.desktopPath
+    : (filename) => path.join(__dirname, filename);
+  const getTargetWindow = typeof options.getTargetWindow === "function"
+    ? options.getTargetWindow
+    : () => null;
+  const openTargetWindow = typeof options.openTargetWindow === "function"
+    ? options.openTargetWindow
+    : () => {};
+  const quitApp = typeof options.quitApp === "function"
+    ? options.quitApp
+    : () => app.quit();
+  const trayToolTip = options.trayToolTip || "RoomBoard Capture";
+  const openLabel = options.openLabel || "Open Login / Review";
+  const captureLabel = options.captureLabel || "Capture Selected Appointment";
+  const quitLabel = options.quitLabel || "Quit RoomBoard Capture";
+  const macTrayIdleTitle = options.macTrayIdleTitle || "RoomBoard";
+  const macTrayActiveTitle = options.macTrayActiveTitle || "RoomBoard ON";
+  const openReviewOnCapture = options.openReviewOnCapture === true
+    || process.env.ROOMBOARD_CAPTURE_OPEN_ON_CAPTURE === "1";
+  const useReviewWindow = options.useReviewWindow === true;
+  const reviewWindowOptions = options.reviewWindowOptions || {};
+
+  let overlayWindow = null;
+  let overlayBounds = null;
+  let monitorProcess = null;
+  let monitorBuffer = "";
+  let lastHoverPayload = null;
+  let isArmed = false;
+  let tray = null;
+  let lastTrayRightClickAt = 0;
+  let lastCapturedPayload = null;
+  let reviewWindow = null;
+  let reviewWindowShouldOpenWhenReady = false;
+  let pendingReviewStatusMessage = null;
+  let ipcRegistered = false;
+
+  function getReviewTargetWindow() {
+    return useReviewWindow ? reviewWindow : getTargetWindow();
+  }
+
+  function sendToTarget(channel, payload) {
+    const targetWindow = getReviewTargetWindow();
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.send(channel, payload);
+    }
+  }
+
+  function sendStatus(message, detail = {}) {
+    const helperInfo = getHelperInfo();
+    sendToTarget("capture:status", {
+      armed: isArmed,
+      helperAvailable: !!helperInfo.path,
+      helperPlatform: helperInfo.config?.name || process.platform,
+      hotkey: captureHotkey,
+      message,
+      ...detail
+    });
+    updateTray();
+  }
+
+  function shouldOpenReview(payload) {
+    if (openReviewOnCapture) return true;
+    if (!payload) return false;
+    if (payload.requiresReview) return true;
+    if (payload.imageDataUrl && !normalizeCapturedText(payload.text || payload.name)) return true;
+    return false;
+  }
+
+  function getTrayIcon() {
+    const candidates = [];
+    if (app.isPackaged) {
+      candidates.push(path.join(process.resourcesPath, "tray-icon.png"));
+      candidates.push(path.join(process.resourcesPath, "icon.png"));
+    }
+
+    candidates.push(path.join(__dirname, "..", "build", "icon.png"));
+    candidates.push(path.join(__dirname, "..", "build", "icon.ico"));
+
+    const iconPath = candidates.find((candidate) => fs.existsSync(candidate));
+    let image = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createFromDataURL(TRANSPARENT_TRAY_ICON);
+    if (!image.isEmpty()) {
+      image = image.resize({ width: IS_MAC ? 18 : 16, height: IS_MAC ? 18 : 16 });
+      if (IS_MAC) image.setTemplateImage(true);
+    }
+    return image;
+  }
+
+  function createTray() {
+    if (tray) return tray;
+
+    tray = new Tray(getTrayIcon());
+    tray.setToolTip(trayToolTip);
+    if (IS_MAC) {
+      tray.setTitle(macTrayIdleTitle);
+      tray.setIgnoreDoubleClickEvents(true);
+      tray.on("click", () => {
+        if (Date.now() - lastTrayRightClickAt < 350) return;
+        toggleCaptureFromTray();
+      });
+    } else {
+      tray.on("click", () => {
+        toggleCaptureFromTray();
+      });
+    }
+    tray.on("right-click", () => {
+      lastTrayRightClickAt = Date.now();
+      tray.popUpContextMenu(buildTrayMenu());
+    });
+    updateTray();
+    return tray;
+  }
+
+  function buildTrayMenu() {
+    const menuItems = [
+      {
+        label: openLabel,
+        click: () => openReviewSurface(isArmed ? "Capture active." : "Ready.")
+      },
+      {
+        label: isArmed ? "Cancel Capture" : captureLabel,
+        click: () => toggleCaptureFromTray()
+      }
+    ];
+
+    if (lastCapturedPayload) {
+      menuItems.push({
+        label: "Review Last Capture",
+        click: () => {
+          openReviewSurface("Review captured appointment.");
+          sendCapturedToTarget(lastCapturedPayload);
+        }
+      });
+    }
+
+    menuItems.push(
+      { type: "separator" },
+      {
+        label: quitLabel,
+        click: () => quitApp()
+      }
+    );
+
+    return Menu.buildFromTemplate(menuItems);
+  }
+
+  function updateTray() {
+    if (!tray) return;
+    const helperInfo = getHelperInfo();
+    const status = isArmed ? "active" : "idle";
+    const helper = helperInfo.path ? "helper ready" : "helper unavailable";
+    tray.setToolTip(`${trayToolTip}: ${status}, ${helper}`);
+    if (IS_MAC) {
+      tray.setTitle(isArmed ? macTrayActiveTitle : macTrayIdleTitle);
+    }
+  }
+
+  function openReviewSurface(statusMessage) {
+    if (useReviewWindow) {
+      showReviewWindow(statusMessage);
+      return;
+    }
+    openTargetWindow(statusMessage);
+    sendStatus(statusMessage || (isArmed ? "Capture active." : "Ready."));
+  }
+
+  function showReviewWindow(statusMessage) {
+    if (!reviewWindow || reviewWindow.isDestroyed()) {
+      reviewWindowShouldOpenWhenReady = true;
+      pendingReviewStatusMessage = statusMessage || null;
+      createReviewWindow({ showOnReady: true });
+      return;
+    }
+
+    if (reviewWindow.isMinimized()) reviewWindow.restore();
+    reviewWindow.setSkipTaskbar(IS_WINDOWS);
+    reviewWindow.show();
+    reviewWindow.focus();
+    if (IS_MAC && typeof app.focus === "function") {
+      app.focus({ steal: true });
+    }
+    sendStatus(statusMessage || (isArmed ? "Capture active." : "Ready."));
+  }
+
+  function hideReviewWindow() {
+    if (!reviewWindow || reviewWindow.isDestroyed()) return;
+    reviewWindow.hide();
+    reviewWindow.setSkipTaskbar(true);
+  }
+
+  function toggleCaptureFromTray() {
+    if (isArmed) {
+      stopCapture("Capture cancelled.");
+      return;
+    }
+
+    startCapture().then((result) => {
+      if (result && result.ok === false) {
+        sendStatus(result.message || "Capture could not start.");
+      }
+    }).catch((error) => {
+      sendStatus(String(error?.message || error || "Capture failed."));
+    });
+  }
+
+  function getHelperInfo() {
+    const config = HELPER_CONFIGS[process.platform];
+    if (!config) return { config: null, path: null };
+
+    const candidates = [];
+    if (app.isPackaged) {
+      candidates.push(path.join(process.resourcesPath, config.resourceDir, config.executable));
+      if (config.legacyResourceDir) {
+        candidates.push(path.join(process.resourcesPath, config.legacyResourceDir, config.executable));
+      }
+    }
+
+    config.devCandidates.forEach((candidate) => {
+      candidates.push(path.join(__dirname, candidate));
+    });
+
+    return {
+      config,
+      path: candidates.find((candidate) => fs.existsSync(candidate)) || null
+    };
+  }
+
+  function getHelperPath() {
+    return getHelperInfo().path;
+  }
+
+  function getOverlayBoundsForCursor() {
+    const cursorPoint = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursorPoint);
+    return display.bounds;
+  }
+
+  function normalizeBounds(bounds) {
+    if (!bounds || typeof bounds !== "object") return null;
+    const left = Number(bounds.left);
+    const top = Number(bounds.top);
+    const width = Number(bounds.width);
+    const height = Number(bounds.height);
+    if (![left, top, width, height].every(Number.isFinite)) return null;
+    if (width <= 0 || height <= 0) return null;
+    return { left, top, width, height };
+  }
+
+  function convertBoundsToOverlay(bounds) {
+    const normalized = normalizeBounds(bounds);
+    if (!normalized || !overlayBounds) return null;
+    return {
+      left: Math.round(normalized.left - overlayBounds.x),
+      top: Math.round(normalized.top - overlayBounds.y),
+      width: Math.round(normalized.width),
+      height: Math.round(normalized.height)
+    };
+  }
+
+  async function ensureOverlayWindow() {
+    if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow;
+
+    overlayBounds = getOverlayBoundsForCursor();
+    overlayWindow = new BrowserWindow({
+      x: overlayBounds.x,
+      y: overlayBounds.y,
+      width: overlayBounds.width,
+      height: overlayBounds.height,
+      alwaysOnTop: true,
+      backgroundColor: "#00000000",
+      focusable: false,
+      frame: false,
+      fullscreenable: false,
+      hasShadow: false,
+      movable: false,
+      resizable: false,
+      show: false,
+      skipTaskbar: true,
+      transparent: true,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: desktopPath("capture-preload.cjs"),
+        sandbox: false
+      }
+    });
+
+    overlayWindow.setAlwaysOnTop(true, "screen-saver");
+    overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+
+    overlayWindow.on("closed", () => {
+      overlayWindow = null;
+      overlayBounds = null;
+    });
+
+    await overlayWindow.loadFile(desktopPath("capture-overlay.html"));
+    overlayWindow.showInactive();
+    return overlayWindow;
+  }
+
+  function closeOverlayWindow() {
+    if (!overlayWindow || overlayWindow.isDestroyed()) return;
+    overlayWindow.close();
+    overlayWindow = null;
+    overlayBounds = null;
+  }
+
+  function emitHover(payload) {
+    lastHoverPayload = payload || null;
+    const overlayPayload = {
+      ...payload,
+      overlayBounds: payload?.bounds ? convertBoundsToOverlay(payload.bounds) : null
+    };
+
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send("capture:hover", overlayPayload);
+    }
+    sendToTarget("capture:hover", payload);
+  }
+
+  function sendCapturedToTarget(captured) {
+    sendToTarget("capture:captured", captured);
+    setTimeout(() => sendToTarget("capture:captured", captured), 150);
+  }
+
+  function emitCaptured(payload) {
+    const captured = payload || lastHoverPayload || {};
+    lastCapturedPayload = captured;
+    stopCapture(captured.text || captured.name ? "Captured appointment text." : "Captured appointment preview.");
+    if (shouldOpenReview(captured)) {
+      openReviewSurface("Review captured appointment.");
+    }
+    sendCapturedToTarget(captured);
+  }
+
+  function handleHelperLine(line) {
+    const trimmed = String(line || "").trim();
+    if (!trimmed) return;
+
+    let payload = null;
+    try {
+      payload = JSON.parse(trimmed);
+    } catch (_error) {
+      sendStatus(trimmed);
+      return;
+    }
+
+    if (payload.type === "hover") {
+      emitHover(payload);
+      return;
+    }
+
+    if (payload.type === "capture") {
+      emitCaptured(payload);
+      return;
+    }
+
+    if (payload.type === "status" || payload.message) {
+      sendStatus(payload.message || "Capture helper update.", payload);
+    }
+  }
+
+  function handleHelperChunk(chunk) {
+    monitorBuffer += String(chunk || "");
+    const lines = monitorBuffer.split(/\r?\n/);
+    monitorBuffer = lines.pop() || "";
+    lines.forEach(handleHelperLine);
+  }
+
+  function normalizeCapturedText(value) {
+    return String(value || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n")
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+  }
+
+  function looksLikeAppointmentText(value) {
+    const text = normalizeCapturedText(value);
+    if (text.length < 4) return false;
+    if (/^\W*\([A-Z?]\s*,?\s*\d{0,3}\)/i.test(text)) return true;
+    if (/\b(?:pro|bwx?|exam|pexam|tx|srp|oh|fmxl?|pfm|comp|dvm|doctor|dr\.?)\b/i.test(text)) return true;
+    if (/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(text)) return true;
+    return text.split(/\n/).filter(Boolean).length >= 2 && /[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(text);
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function runHelperCommand(args, commandOptions = {}) {
+    const helperInfo = getHelperInfo();
+    const helperPath = helperInfo.path;
+    if (!helperInfo.config) {
+      return Promise.reject(new Error("Native appointment capture is only available in the Windows and Mac capture apps."));
+    }
+    if (!helperPath) {
+      const command = IS_MAC ? "npm run capture:helper:build:mac" : "npm run capture:helper:build";
+      return Promise.reject(new Error(`${helperInfo.config.name} capture helper is not built yet. Run ${command}.`));
+    }
+
+    return new Promise((resolve, reject) => {
+      const events = [];
+      let stdoutBuffer = "";
+      let stderr = "";
+      let settled = false;
+      const timeoutMs = Number(commandOptions.timeoutMs || 2500);
+
+      const child = spawn(helperPath, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true
+      });
+
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(events);
+      };
+
+      const parseLine = (line) => {
+        const trimmed = String(line || "").trim();
+        if (!trimmed) return;
+        try {
+          const payload = JSON.parse(trimmed);
+          events.push(payload);
+          if (payload.type === "status" || payload.message) {
+            sendStatus(payload.message || "Capture helper update.", payload);
+          }
+        } catch (_error) {
+          events.push({ type: "status", message: trimmed });
+          sendStatus(trimmed);
+        }
+      };
+
+      const timer = setTimeout(() => {
+        try {
+          child.kill();
+        } catch (_error) {}
+        finish(new Error("Capture helper timed out."));
+      }, timeoutMs);
+
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        stdoutBuffer += String(chunk || "");
+        const lines = stdoutBuffer.split(/\r?\n/);
+        stdoutBuffer = lines.pop() || "";
+        lines.forEach(parseLine);
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += String(chunk || "");
+      });
+      child.on("error", finish);
+      child.on("close", (code) => {
+        parseLine(stdoutBuffer);
+        if (code && events.length === 0) {
+          finish(new Error(stderr.trim() || `Capture helper exited with code ${code}.`));
+          return;
+        }
+        finish();
+      });
+    });
+  }
+
+  async function copySelectedTextFromActiveApp() {
+    const before = clipboard.readText() || "";
+    await runHelperCommand(["copy-selection"], { timeoutMs: 1500 }).catch((error) => {
+      sendStatus(String(error?.message || error || "Could not send copy shortcut."));
+    });
+    await delay(IS_MAC ? 260 : 180);
+
+    const after = clipboard.readText() || "";
+    const copiedText = normalizeCapturedText(after);
+    if (!copiedText) return "";
+    if (after !== before) return copiedText;
+    return looksLikeAppointmentText(copiedText) ? copiedText : "";
+  }
+
+  async function inspectCursorOnce() {
+    const events = await runHelperCommand(["inspect"], { timeoutMs: 3000 });
+    return events.reverse().find((payload) => (
+      payload
+      && (payload.type === "capture" || payload.text || payload.name || payload.imageDataUrl)
+      && (normalizeCapturedText(payload.text || payload.name) || payload.imageDataUrl)
+    )) || null;
+  }
+
+  async function startCapture() {
+    if (isArmed) {
+      return { ok: true, message: "Capture is already running." };
+    }
+
+    const helperInfo = getHelperInfo();
+    if (!helperInfo.config) {
+      const message = "Native appointment capture is only available in the Windows and Mac capture apps.";
+      sendStatus(message);
+      return { ok: false, message };
+    }
+
+    if (!helperInfo.path) {
+      const command = IS_MAC ? "npm run capture:helper:build:mac" : "npm run capture:helper:build";
+      const message = `${helperInfo.config.name} capture helper is not built yet. Run ${command}.`;
+      sendStatus(message);
+      return { ok: false, message };
+    }
+
+    isArmed = true;
+    updateTray();
+    sendStatus("Capturing selected appointment. If nothing is selected, the app will use a screen preview.");
+
+    try {
+      const copiedText = await copySelectedTextFromActiveApp();
+      if (copiedText) {
+        emitCaptured({
+          type: "capture",
+          text: copiedText,
+          name: "",
+          captureMethod: "selected-text",
+          windowTitle: "Selected text",
+          processName: "",
+          bounds: null,
+          visualBounds: null,
+          imageDataUrl: null
+        });
+        return { ok: true, message: "Captured selected appointment text." };
+      }
+
+      const inspected = await inspectCursorOnce();
+      if (inspected) {
+        emitCaptured({
+          ...inspected,
+          type: "capture",
+          captureMethod: inspected.captureMethod || "cursor-inspect"
+        });
+        return { ok: true, message: inspected.text || inspected.name ? "Captured appointment details." : "Captured screen preview." };
+      }
+
+      const message = "No appointment text or screen preview was captured. Copy the appointment text, then use the capture button again.";
+      isArmed = false;
+      updateTray();
+      sendStatus(message);
+      return { ok: false, message };
+    } catch (error) {
+      const message = String(error?.message || error || "Capture failed.");
+      isArmed = false;
+      updateTray();
+      sendStatus(message);
+      return { ok: false, message };
+    }
+  }
+
+  async function startHoverCapture() {
+    if (isArmed) {
+      return { ok: true, message: "Capture is already armed." };
+    }
+
+    const helperInfo = getHelperInfo();
+    if (!helperInfo.config) {
+      const message = "Native appointment capture is only available in the Windows and Mac capture apps.";
+      sendStatus(message);
+      return { ok: false, message };
+    }
+
+    const helperPath = helperInfo.path;
+    if (!helperPath) {
+      const command = IS_MAC ? "npm run capture:helper:build:mac" : "npm run capture:helper:build";
+      const message = `${helperInfo.config.name} capture helper is not built yet. Run ${command}.`;
+      sendStatus(message);
+      return { ok: false, message };
+    }
+
+    await ensureOverlayWindow();
+    isArmed = true;
+    monitorBuffer = "";
+    lastHoverPayload = null;
+
+    monitorProcess = spawn(helperPath, ["monitor"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
+
+    monitorProcess.stdout.setEncoding("utf8");
+    monitorProcess.stderr.setEncoding("utf8");
+    monitorProcess.stdout.on("data", handleHelperChunk);
+    monitorProcess.stderr.on("data", (chunk) => {
+      const message = String(chunk || "").trim();
+      if (message) sendStatus(message);
+    });
+    monitorProcess.on("exit", (code) => {
+      monitorProcess = null;
+      if (isArmed) {
+        isArmed = false;
+        closeOverlayWindow();
+        sendStatus(`Capture helper stopped${code == null ? "." : ` (${code}).`}`);
+      }
+    });
+
+    sendStatus("Capture armed. Hover an appointment box, then click it.");
+    return { ok: true, message: "Capture armed." };
+  }
+
+  function stopCapture(message = "Capture stopped.") {
+    isArmed = false;
+
+    if (monitorProcess) {
+      try {
+        monitorProcess.kill();
+      } catch (_error) {}
+      monitorProcess = null;
+    }
+
+    closeOverlayWindow();
+    sendStatus(message);
+    return { ok: true, message };
+  }
+
+  function createReviewWindow(windowOptions = {}) {
+    const showOnReady = windowOptions.showOnReady === true || reviewWindowShouldOpenWhenReady;
+    reviewWindow = new BrowserWindow({
+      autoHideMenuBar: true,
+      backgroundColor: "#e9eef3",
+      height: reviewWindowOptions.height || 820,
+      minHeight: reviewWindowOptions.minHeight || 720,
+      minWidth: reviewWindowOptions.minWidth || 440,
+      show: false,
+      skipTaskbar: IS_WINDOWS || !showOnReady,
+      title: reviewWindowOptions.title || "RoomBoard Capture",
+      width: reviewWindowOptions.width || 520,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: desktopPath("capture-preload.cjs"),
+        sandbox: false
+      }
+    });
+
+    reviewWindow.once("ready-to-show", () => {
+      const readyMessage = pendingReviewStatusMessage || "Ready.";
+      pendingReviewStatusMessage = null;
+      if (showOnReady) {
+        reviewWindowShouldOpenWhenReady = false;
+        if (IS_WINDOWS) reviewWindow.setSkipTaskbar(true);
+        if (reviewWindow) reviewWindow.show();
+        if (IS_MAC && typeof app.focus === "function") {
+          app.focus({ steal: true });
+        }
+      } else {
+        hideReviewWindow();
+      }
+      sendStatus(readyMessage);
+    });
+
+    reviewWindow.on("close", (event) => {
+      if (options.isQuitting && options.isQuitting()) return;
+      event.preventDefault();
+      hideReviewWindow();
+    });
+
+    reviewWindow.on("closed", () => {
+      reviewWindow = null;
+    });
+
+    reviewWindow.loadFile(desktopPath("capture-ui.html"));
+  }
+
+  function registerHotkey() {
+    globalShortcut.unregister(captureHotkey);
+    const registered = globalShortcut.register(captureHotkey, () => {
+      if (isArmed) stopCapture("Capture cancelled.");
+      else startCapture().catch((error) => sendStatus(String(error?.message || error || "Capture failed.")));
+    });
+
+    if (!registered) {
+      sendStatus(`Could not register hotkey ${captureHotkey}.`);
+    }
+    return registered;
+  }
+
+  function registerIpc() {
+    if (ipcRegistered) return;
+    ipcRegistered = true;
+    ipcMain.handle("capture:start", () => startCapture());
+    ipcMain.handle("capture:stop", () => stopCapture("Capture cancelled."));
+    ipcMain.handle("capture:read-clipboard-text", () => clipboard.readText() || "");
+    ipcMain.handle("capture:copy-text", (_event, text) => {
+      clipboard.writeText(String(text || ""));
+      return { ok: true };
+    });
+    ipcMain.handle("capture:get-last-captured", () => lastCapturedPayload);
+    ipcMain.handle("capture:get-status", () => ({
+      armed: isArmed,
+      helperAvailable: !!getHelperPath(),
+      helperPlatform: getHelperInfo().config?.name || process.platform,
+      hotkey: captureHotkey,
+      platform: process.platform
+    }));
+  }
+
+  function destroy() {
+    globalShortcut.unregister(captureHotkey);
+    stopCapture("Capture stopped.");
+    if (tray) {
+      tray.destroy();
+      tray = null;
+    }
+    if (reviewWindow && !reviewWindow.isDestroyed()) {
+      reviewWindow.destroy();
+      reviewWindow = null;
+    }
+  }
+
+  return {
+    createReviewWindow,
+    createTray,
+    destroy,
+    getLastCaptured: () => lastCapturedPayload,
+    getStatus: () => ({
+      armed: isArmed,
+      helperAvailable: !!getHelperPath(),
+      helperPlatform: getHelperInfo().config?.name || process.platform,
+      hotkey: captureHotkey,
+      platform: process.platform
+    }),
+    registerHotkey,
+    registerIpc,
+    sendStatus,
+    startCapture,
+    startHoverCapture,
+    stopCapture
+  };
+}
+
+module.exports = {
+  createCaptureService
+};

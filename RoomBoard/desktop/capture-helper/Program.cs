@@ -35,6 +35,12 @@ internal static class Program
                 return 0;
             }
 
+            if (command == "copy-selection")
+            {
+                SendCopyShortcut();
+                return 0;
+            }
+
             var point = GetCursorPoint();
             WriteEvent(InspectPoint(point.X, point.Y, "capture"));
             return 0;
@@ -48,6 +54,17 @@ internal static class Program
             });
             return 1;
         }
+    }
+
+    private static void SendCopyShortcut()
+    {
+        Forms.SendKeys.SendWait("^c");
+        Thread.Sleep(80);
+        WriteEvent(new CaptureEvent
+        {
+            Type = "status",
+            Message = "Copy shortcut sent."
+        });
     }
 
     private static void MonitorCursor()
@@ -486,8 +503,7 @@ internal static class Program
     private static string BuildElementText(AutomationElement element)
     {
         var lines = new List<string>();
-        AddText(lines, SafeCurrentName(element));
-        AddText(lines, SafeValue(element));
+        AddElementText(lines, element);
 
         try
         {
@@ -496,15 +512,13 @@ internal static class Program
             var count = 0;
             while (child != null && count < 32)
             {
-                AddText(lines, SafeCurrentName(child));
-                AddText(lines, SafeValue(child));
+                AddElementText(lines, child);
 
                 var grandChild = walker.GetFirstChild(child);
                 var grandCount = 0;
                 while (grandChild != null && grandCount < 8)
                 {
-                    AddText(lines, SafeCurrentName(grandChild));
-                    AddText(lines, SafeValue(grandChild));
+                    AddElementText(lines, grandChild);
                     grandChild = walker.GetNextSibling(grandChild);
                     grandCount += 1;
                 }
@@ -519,6 +533,17 @@ internal static class Program
         }
 
         return string.Join("\n", lines.Distinct()).Trim();
+    }
+
+    private static void AddElementText(List<string> lines, AutomationElement element)
+    {
+        AddText(lines, SafeCurrentName(element));
+        AddText(lines, SafeValue(element));
+        AddText(lines, SafeTextPattern(element));
+        AddText(lines, SafeLegacyName(element));
+        AddText(lines, SafeLegacyValue(element));
+        AddText(lines, SafeLegacyDescription(element));
+        AddText(lines, SafeLegacyHelp(element));
     }
 
     private static void AddText(List<string> lines, string value)
@@ -620,6 +645,88 @@ internal static class Program
         }
 
         return "";
+    }
+
+    private static string SafeTextPattern(AutomationElement element)
+    {
+        try
+        {
+            if (element.TryGetCurrentPattern(TextPattern.Pattern, out var pattern) && pattern is TextPattern textPattern)
+            {
+                return NormalizeSpaces(textPattern.DocumentRange.GetText(500));
+            }
+        }
+        catch
+        {
+            return "";
+        }
+
+        return "";
+    }
+
+    private static LegacyIAccessiblePattern? SafeLegacyPattern(AutomationElement element)
+    {
+        try
+        {
+            if (element.TryGetCurrentPattern(LegacyIAccessiblePattern.Pattern, out var pattern) && pattern is LegacyIAccessiblePattern legacyPattern)
+            {
+                return legacyPattern;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static string SafeLegacyName(AutomationElement element)
+    {
+        try
+        {
+            return NormalizeSpaces(SafeLegacyPattern(element)?.Current.Name);
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static string SafeLegacyValue(AutomationElement element)
+    {
+        try
+        {
+            return NormalizeSpaces(SafeLegacyPattern(element)?.Current.Value);
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static string SafeLegacyDescription(AutomationElement element)
+    {
+        try
+        {
+            return NormalizeSpaces(SafeLegacyPattern(element)?.Current.Description);
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static string SafeLegacyHelp(AutomationElement element)
+    {
+        try
+        {
+            return NormalizeSpaces(SafeLegacyPattern(element)?.Current.Help);
+        }
+        catch
+        {
+            return "";
+        }
     }
 
     private static string BuildSignature(CaptureEvent payload)

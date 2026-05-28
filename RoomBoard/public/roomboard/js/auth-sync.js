@@ -23,6 +23,36 @@
       return String(err);
     }
 
+    var PRACTICE_SETTINGS_BASE_SELECT = "practice_id, board_columns, show_only_active, board_view, highlight_doctor_id";
+    var PRACTICE_SETTINGS_DEFAULT_APPOINTMENT_TYPE_COLUMN = "default_appointment_type_id";
+    var practiceSettingsDefaultAppointmentTypeColumnAvailable = true;
+
+    function getPracticeSettingsSelect(){
+      return PRACTICE_SETTINGS_BASE_SELECT
+        + (practiceSettingsDefaultAppointmentTypeColumnAvailable ? ", " + PRACTICE_SETTINGS_DEFAULT_APPOINTMENT_TYPE_COLUMN : "");
+    }
+
+    function getSupabaseErrorText(err){
+      if(!err) return "";
+      return String([
+        err.code || "",
+        err.message || "",
+        err.details || "",
+        err.hint || "",
+        err.error_description || "",
+        err.error || ""
+      ].join(" ")).toLowerCase();
+    }
+
+    function isMissingPracticeSettingsDefaultAppointmentTypeColumnError(err){
+      var text = getSupabaseErrorText(err);
+      return text.indexOf(PRACTICE_SETTINGS_DEFAULT_APPOINTMENT_TYPE_COLUMN) >= 0
+        && (text.indexOf("does not exist") >= 0
+          || text.indexOf("could not find") >= 0
+          || text.indexOf("schema cache") >= 0
+          || String(err && err.code || "") === "PGRST204");
+    }
+
     function getPracticeScope(){
       return currentPracticeId || "guest";
     }
@@ -432,8 +462,43 @@
 
     function isMissingSettingsStorageError(err){
       if(!err) return false;
-      return String(err.code || "") === "42P01"
-        || String(err.message || "").toLowerCase().indexOf("does not exist") >= 0;
+      var code = String(err.code || "");
+      var text = getSupabaseErrorText(err);
+      return code === "42P01"
+        || code === "PGRST205"
+        || text.indexOf("does not exist") >= 0
+        || text.indexOf("could not find the table") >= 0
+        || (text.indexOf("schema cache") >= 0
+          && (text.indexOf("practice_default_settings") >= 0 || text.indexOf("user_settings") >= 0));
+    }
+
+    async function queryPracticeSettingsRow(practiceId){
+      var res = await supabase
+        .from("practice_settings")
+        .select(getPracticeSettingsSelect())
+        .eq("practice_id", practiceId)
+        .maybeSingle();
+      if(res.error && practiceSettingsDefaultAppointmentTypeColumnAvailable && isMissingPracticeSettingsDefaultAppointmentTypeColumnError(res.error)){
+        practiceSettingsDefaultAppointmentTypeColumnAvailable = false;
+        res = await supabase
+          .from("practice_settings")
+          .select(getPracticeSettingsSelect())
+          .eq("practice_id", practiceId)
+          .maybeSingle();
+      }
+      return res;
+    }
+
+    async function upsertPracticeSettingsRow(payload){
+      var nextPayload = payload || {};
+      var res = await supabase.from("practice_settings").upsert(nextPayload, { onConflict: "practice_id" });
+      if(res.error && practiceSettingsDefaultAppointmentTypeColumnAvailable && isMissingPracticeSettingsDefaultAppointmentTypeColumnError(res.error)){
+        practiceSettingsDefaultAppointmentTypeColumnAvailable = false;
+        nextPayload = Object.assign({}, nextPayload);
+        delete nextPayload.default_appointment_type_id;
+        res = await supabase.from("practice_settings").upsert(nextPayload, { onConflict: "practice_id" });
+      }
+      return res;
     }
 
     async function loadPracticeDefaultSettingsRecord(){
@@ -2342,7 +2407,7 @@
       if(!supabase || !practiceId) return null;
       var roomsReq = supabase.from("rooms").select("id, name, sort_order, active").eq("practice_id", practiceId).order("sort_order", { ascending: true });
       var doctorsReq = supabase.from("doctors").select("id, name, initials, active").eq("practice_id", practiceId).order("name", { ascending: true });
-      var settingsReq = supabase.from("practice_settings").select("practice_id, board_columns, show_only_active, board_view, highlight_doctor_id, default_appointment_type_id").eq("practice_id", practiceId).maybeSingle();
+      var settingsReq = queryPracticeSettingsRow(practiceId);
       var appointmentTypesReq = supabase.from("appointment_types").select("id, title, color_hex, sort_order, active").eq("practice_id", practiceId).order("sort_order", { ascending: true });
       var quickNotesReq = supabase.from("quick_notes").select("id, label, sort_order, active").eq("practice_id", practiceId).order("sort_order", { ascending: true });
       var results = await Promise.all([roomsReq, doctorsReq, settingsReq, appointmentTypesReq, quickNotesReq]);
@@ -2534,7 +2599,7 @@
         });
         var roomsReq = supabase.from("rooms").select("id, name, sort_order, active").eq("practice_id", currentPracticeId).order("sort_order", { ascending: true });
         var doctorsReq = supabase.from("doctors").select("id, name, initials, active").eq("practice_id", currentPracticeId).order("name", { ascending: true });
-        var settingsReq = supabase.from("practice_settings").select("practice_id, board_columns, show_only_active, board_view, highlight_doctor_id, default_appointment_type_id").eq("practice_id", currentPracticeId).maybeSingle();
+        var settingsReq = queryPracticeSettingsRow(currentPracticeId);
         var appointmentTypesReq = supabase.from("appointment_types").select("id, title, color_hex, sort_order, active").eq("practice_id", currentPracticeId).order("sort_order", { ascending: true });
         var quickNotesReq = supabase.from("quick_notes").select("id, label, sort_order, active").eq("practice_id", currentPracticeId).order("sort_order", { ascending: true });
         var roomBoardReq = supabase.from("practice_board_state").select("board_state, updated_at").eq("practice_id", currentPracticeId).maybeSingle();
@@ -2771,7 +2836,7 @@
         practice_id: currentPracticeId,
         default_appointment_type_id: defaultAppointmentTypeId
       };
-      var res = await supabase.from("practice_settings").upsert(payload, { onConflict: "practice_id" });
+      var res = await upsertPracticeSettingsRow(payload);
       if(res.error) throw res.error;
     }
 

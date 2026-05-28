@@ -78,11 +78,12 @@ jobs:
             exit 1
           fi
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" \
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
               --title "RoomBoard $RELEASE_TAG" \
-              --notes "Windows installer build for RoomBoard."
+              --notes "RoomBoard desktop app release." \
+              || gh release view "$RELEASE_TAG" >/dev/null
           fi
+
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber

@@ -2,6 +2,7 @@ const { app, BrowserWindow, shell } = require("electron");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const { createCaptureService } = require("./capture-service.cjs");
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -21,9 +22,15 @@ const MIME_TYPES = {
 
 let mainWindow = null;
 let staticServer = null;
+let captureService = null;
+let isQuitting = false;
 
 function getStaticRoot() {
   return path.resolve(__dirname, "..", "public", "roomboard");
+}
+
+function desktopPath(filename) {
+  return path.join(__dirname, filename);
 }
 
 function getMimeType(filePath) {
@@ -157,7 +164,8 @@ async function createMainWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      preload: desktopPath("capture-preload.cjs"),
+      sandbox: false
     }
   });
 
@@ -165,6 +173,12 @@ async function createMainWindow() {
     if (mainWindow) {
       mainWindow.show();
     }
+  });
+
+  mainWindow.on("close", (event) => {
+    if (process.platform !== "darwin" || isQuitting) return;
+    event.preventDefault();
+    if (mainWindow) mainWindow.hide();
   });
 
   mainWindow.on("closed", () => {
@@ -192,24 +206,64 @@ async function createMainWindow() {
   await mainWindow.loadURL(`${baseUrl}/index.html`);
 }
 
+async function showMainWindow(statusMessage) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    await createMainWindow();
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  if (process.platform === "darwin" && typeof app.focus === "function") {
+    app.focus({ steal: true });
+  }
+  if (captureService) {
+    captureService.sendStatus(statusMessage || "Ready.");
+  }
+}
+
 app.on("window-all-closed", () => {
-  closeStaticServer();
   if (process.platform !== "darwin") {
+    closeStaticServer();
     app.quit();
   }
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
+  if (captureService) {
+    captureService.destroy();
+  }
   closeStaticServer();
 });
 
 app.on("activate", async () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    await createMainWindow();
-  }
+  await showMainWindow("Ready.");
 });
 
-app.whenReady().then(createMainWindow).catch((error) => {
+app.whenReady().then(async () => {
+  captureService = createCaptureService({
+    captureLabel: "Capture Appointment",
+    desktopPath,
+    getTargetWindow: () => mainWindow,
+    macTrayActiveTitle: "RoomBoard ON",
+    macTrayIdleTitle: "RoomBoard",
+    openLabel: "Open RoomBoard",
+    openReviewOnCapture: true,
+    openTargetWindow: showMainWindow,
+    quitApp: () => {
+      isQuitting = true;
+      app.quit();
+    },
+    quitLabel: "Quit RoomBoard",
+    trayToolTip: "RoomBoard"
+  });
+  captureService.registerIpc();
+  captureService.createTray();
+  captureService.registerHotkey();
+  await createMainWindow();
+}).catch((error) => {
   console.error("RoomBoard desktop startup failed:", error);
   app.quit();
 });

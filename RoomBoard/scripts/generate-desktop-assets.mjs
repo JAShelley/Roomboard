@@ -74,7 +74,12 @@ async function main() {
   await writeFile(icoPath, icoBuffer);
 }
 
-main().catch((error) => {
-  console.error("Failed to generate desktop assets:", error);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    sharp.cache(false);
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("Failed to generate desktop assets:", error);
+    process.exit(1);
+  });

@@ -10,14 +10,17 @@
   <main class="appShell">
     <header class="appHeader">
       <div>
-        <div class="eyebrow">RoomBoard</div>
-        <h1>Capture</h1>
+        <div class="eyebrow">RoomBoard Capture</div>
+        <h1>Quick Send</h1>
       </div>
-      <button class="iconButton" id="refreshStatusBtn" type="button" title="Refresh status">↻</button>
+      <button class="iconButton" id="refreshStatusBtn" type="button" title="Refresh status" aria-label="Refresh status">↻</button>
     </header>
 
-    <section class="panel">
-      <h2>Connection</h2>
+    <details class="panel connectionPanel" id="connectionPanel">
+      <summary>
+        <span>Connection</span>
+        <span class="statusLine summaryStatus" id="connectionStatus">Not connected.</span>
+      </summary>
       <div class="twoCol">
         <label>
           Email
@@ -29,57 +32,57 @@
         </label>
       </div>
       <div class="actions">
-        <button class="primary" id="loginBtn" type="button">Login</button>
+        <button class="primary" id="loginBtn" type="button">Sign in</button>
         <button id="loadBoardBtn" type="button">Load board</button>
       </div>
-      <div class="statusLine" id="connectionStatus">Not connected.</div>
-    </section>
+    </details>
 
-    <section class="panel">
-      <h2>Appointment Capture</h2>
-      <p class="muted">Press the hotkey or arm capture here, then hover an appointment box and click it.</p>
-      <div class="actions">
-        <button class="primary" id="armCaptureBtn" type="button">Arm capture</button>
-        <button id="stopCaptureBtn" type="button">Cancel</button>
+    <section class="panel capturePanel">
+      <div class="panelHeader">
+        <div>
+          <div class="eyebrow">Capture</div>
+          <h2>Appointment</h2>
+        </div>
+        <div class="actions">
+          <button class="primary" id="armCaptureBtn" type="button">Capture</button>
+          <button id="pasteClipboardBtn" type="button">Paste text</button>
+          <button class="quiet" id="stopCaptureBtn" type="button">Cancel</button>
+        </div>
       </div>
       <div class="statusLine" id="captureStatus">Ready.</div>
-      <div class="hoverPreview" id="hoverPreview">No appointment under cursor.</div>
+      <div class="hoverPreview" id="hoverPreview">No appointment selected.</div>
     </section>
 
-    <section class="panel">
-      <h2>Review and Send</h2>
+    <section class="panel reviewPanel">
+      <div class="panelHeader">
+        <div>
+          <div class="eyebrow">Review</div>
+          <h2>Send appointment to the board</h2>
+        </div>
+        <button class="quiet" id="clearBtn" type="button">Clear</button>
+      </div>
       <div class="capturePreview" id="capturePreview" hidden>
         <img alt="Captured appointment preview" id="capturePreviewImage">
       </div>
-      <label>
-        Patient
-        <input id="patientNameInput" type="text">
-      </label>
-      <label>
-        Appointment type or reason
-        <input id="reasonInput" type="text">
-      </label>
-      <div class="twoCol">
+      <input id="timeInput" type="hidden">
+      <input id="reasonInput" type="hidden">
+      <div class="formGrid">
+        <label class="fieldFull">
+          Room
+          <select id="roomSelect"></select>
+        </label>
+        <label class="fieldFull">
+          Patient
+          <input id="patientNameInput" type="text">
+        </label>
         <label>
-          Time
-          <input id="timeInput" type="text">
+          Type
+          <select id="colorLabelSelect"></select>
         </label>
         <label>
           Doctor
           <select id="doctorSelect"></select>
         </label>
-      </div>
-      <div class="twoCol">
-        <label>
-          Room
-          <select id="roomSelect"></select>
-        </label>
-        <label>
-          RoomBoard type
-          <select id="colorLabelSelect"></select>
-        </label>
-      </div>
-      <div class="twoCol">
         <label>
           Tech
           <input id="techInput" type="text">
@@ -88,20 +91,26 @@
           Quick note
           <select id="quickNoteSelect"></select>
         </label>
+        <label class="fieldFull">
+          Notes
+          <textarea id="notesInput" rows="4"></textarea>
+        </label>
       </div>
-      <label>
-        Notes
-        <textarea id="notesInput" rows="4"></textarea>
-      </label>
       <div class="checkRow">
         <label><input id="roomReadyInput" type="checkbox"> Room ready</label>
         <label><input id="doctorReadyInput" type="checkbox"> Doctor ready</label>
       </div>
-      <div class="actions">
-        <button class="primary" id="sendBtn" type="button">Send to RoomBoard</button>
-        <button id="clearBtn" type="button">Clear</button>
+      <div class="footerBar">
+        <div class="statusLine" id="sendStatus">No appointment captured.</div>
+        <div class="actions">
+          <button class="primary" id="sendBtn" type="button">Send</button>
+          <button class="quiet" id="copyDiagnosticsBtn" type="button">Diagnostics</button>
+        </div>
       </div>
-      <div class="statusLine" id="sendStatus">Capture an appointment to start.</div>
+      <details class="diagnosticsPanel">
+        <summary>Diagnostics</summary>
+        <pre id="diagnosticOutput">No capture yet.</pre>
+      </details>
     </section>
   </main>
   <script src="./capture-ui.js"></script>

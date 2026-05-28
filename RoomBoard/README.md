@@ -49,8 +49,8 @@ Deploy the Next app to a real server platform such as Vercel, then enter that de
 https://your-roomboard-app.vercel.app
 ```
 
-## Windows app build
-RoomBoard can be packaged as a Windows desktop app with Electron. The desktop wrapper serves `public/roomboard` over a tiny built-in local server so Supabase auth still runs on `http://127.0.0.1` instead of failing on `file://`.
+## Desktop app build
+RoomBoard can be packaged as a desktop app with Electron. The desktop wrapper serves `public/roomboard` over a tiny built-in local server so Supabase auth still runs on `http://127.0.0.1` instead of failing on `file://`. On Mac, appointment capture runs from RoomBoard's menu bar integration instead of a separate visible capture window.
 
 Commands:
 
@@ -66,43 +66,48 @@ To create a Windows installer from a Windows machine:
 npm run desktop:dist:win
 ```
 
-The packaged app output will be written to `dist/` with a stable installer filename:
+To create a signed and notarized Mac installer from a Mac with Apple Developer ID credentials:
+
+```bash
+npm run desktop:dist:mac:release
+```
+
+The packaged app output is written to `dist/` with stable installer filenames:
 
 ```text
 RoomBoard-Setup-Windows-x64.exe
+RoomBoard-macOS.dmg
 ```
 
-That gives you a stable direct-download URL pattern:
+That gives you stable direct-download URL patterns:
 
 ```text
-https://github.com/OWNER/REPO/releases/latest/download/RoomBoard-Setup-Windows-x64.exe
+https://github.com/jacksonshelley0204-spec/Roomboard/releases/download/v0.1.0/RoomBoard-Setup-Windows-x64.exe
+https://github.com/jacksonshelley0204-spec/Roomboard/releases/download/v0.1.0/RoomBoard-macOS.dmg
 ```
 
-To show that button inside the website, set `window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__` in `public/roomboard/config.js` to your final GitHub release URL.
+The website download cards use `window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__` and `window.__ROOMBOARD_MAC_DOWNLOAD_URL__` from `public/roomboard/config.js`. Update `window.__ROOMBOARD_RELEASE_TAG__` there when publishing a new app release tag.
 
 ## Capture app downloads
-The website has separate download slots for RoomBoard Capture on Windows and Mac. These are independent from the normal RoomBoard website sync flow; they only appear when installer URLs are set in `public/roomboard/config.js`.
+The website still has a separate download slot for RoomBoard Capture on Windows. The old Mac capture download URL now defaults to blank because the Mac capture tool is meant to live inside the normal RoomBoard app menu bar.
 
 Use stable installer filenames:
 
 ```text
 RoomBoard-Capture-Setup-Windows-x64.exe
-RoomBoard-Capture-macOS.dmg
 ```
 
-After the capture installers are built and attached to releases, set these values in `public/roomboard/config.js`:
+After the Windows capture installer is built and attached to a release, set these values in `public/roomboard/config.js`:
 
 ```js
 window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_URL__ = "./downloads/RoomBoard-Capture-Setup-Windows-x64.exe";
 window.__ROOMBOARD_CAPTURE_WINDOWS_DOWNLOAD_FILENAME__ = "RoomBoard-Capture-Setup-Windows-x64.exe";
-window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_URL__ = "./downloads/RoomBoard-Capture-macOS.dmg";
-window.__ROOMBOARD_CAPTURE_MAC_DOWNLOAD_FILENAME__ = "RoomBoard-Capture-macOS.dmg";
 ```
 
-Each capture download card checks its same-site download path before showing, so buttons stay hidden until the installer file exists. If you host installers on GitHub Releases instead, replace the relative URL with the full GitHub release asset URL.
+Each download card checks its same-site download path before showing, so buttons stay hidden until the installer file exists. If you host installers on GitHub Releases instead, replace the relative URL with the full GitHub release asset URL.
 
-## Capture app build
-RoomBoard Capture is a separate Electron entry point from the normal RoomBoard desktop app.
+## Capture internals and legacy standalone builds
+RoomBoard Capture still has a separate Electron entry point for compatibility and testing, but the public Mac distribution should use the normal RoomBoard app with menu bar capture built in.
 
 Source:
 - `desktop/capture-main.cjs`: Electron main process, global hotkey, overlay, and helper process bridge
@@ -114,7 +119,7 @@ Source:
 
 The first capture layer tries Windows UI Automation for readable appointment text. If the scheduler behaves like a legacy colored appointment grid, the helper falls back to visual block detection around the cursor, highlights the colored appointment rectangle, and sends a cropped appointment preview to the review panel so missing fields can be filled before sending. OCR is the next layer for fully automatic parsing when the scheduler exposes only a flat image.
 
-The Mac helper starts with macOS Accessibility capture. Mac users must allow RoomBoard Capture in System Settings > Privacy & Security > Accessibility. Screen Recording and OCR can be added as the next Mac layer for apps that expose only a flat image.
+The Mac helper starts with macOS Accessibility capture. Mac users must allow RoomBoard in System Settings > Privacy & Security > Accessibility. Screen Recording and OCR can be added as the next Mac layer for apps that expose only a flat image.
 
 Development command:
 
@@ -140,7 +145,7 @@ For the static website download button, copy that file to:
 public/roomboard/downloads/RoomBoard-Capture-Setup-Windows-x64.exe
 ```
 
-Mac installer command, run from a Mac:
+Legacy standalone Mac capture installer command, run from a Mac:
 
 ```bash
 npm run capture:dist:mac
@@ -152,35 +157,51 @@ The packaged output is written to:
 dist-capture-mac/RoomBoard-Capture-macOS.dmg
 ```
 
-For the static website download button, copy that file to:
-
-```text
-public/roomboard/downloads/RoomBoard-Capture-macOS.dmg
-```
+Do not use this as the public Mac website download. Use `RoomBoard-macOS.dmg` from the normal desktop app release instead.
 
 ## GitHub Actions
-This repo now includes two GitHub Actions workflows at the repository root:
+This repo includes these GitHub Actions workflows at the repository root:
 
 - `.github/workflows/windows-build.yml`: builds the Windows installer on `push`, `pull_request`, or manual dispatch and uploads the installer as a workflow artifact.
 - `.github/workflows/release-windows.yml`: builds the Windows installer on version tags like `v0.1.0` or manual dispatch, then creates or updates a GitHub Release with the downloadable installer attached.
+- `.github/workflows/release-mac.yml`: builds the signed and notarized Mac RoomBoard app on version tags like `v0.1.0` or manual dispatch, then attaches `RoomBoard-macOS.dmg` to the same GitHub Release.
 - `.github/workflows/capture-windows-build.yml`: builds the RoomBoard Capture Windows installer on `push`, `pull_request`, or manual dispatch and uploads the installer as a workflow artifact.
 - `.github/workflows/release-capture-windows.yml`: builds the RoomBoard Capture Windows installer on capture tags like `capture-v0.1.0` or manual dispatch, then creates or updates a GitHub Release with the downloadable installer attached.
-- `.github/workflows/capture-mac-build.yml`: builds the RoomBoard Capture Mac installer on `push`, `pull_request`, or manual dispatch and uploads the installer as a workflow artifact.
-- `.github/workflows/release-capture-mac.yml`: builds the RoomBoard Capture Mac installer on capture Mac tags like `capture-mac-v0.1.0` or manual dispatch, then creates or updates a GitHub Release with the downloadable installer attached.
+- `.github/workflows/capture-mac-build.yml`: builds the legacy standalone RoomBoard Capture Mac installer on `push`, `pull_request`, or manual dispatch and uploads the installer as a workflow artifact.
+- `.github/workflows/release-capture-mac.yml`: builds the legacy standalone RoomBoard Capture Mac installer on capture Mac tags like `capture-mac-v0.1.0` or manual dispatch, then creates or updates a GitHub Release with the downloadable installer attached.
 
 The workflows currently assume the app lives in the `RoomBoard/` subfolder of the repository, which matches the current repo layout.
 
 ### Publish a download release
 1. Push this repository to GitHub and make sure GitHub Actions is enabled.
 2. Create and push a version tag such as `v0.1.0`.
-3. Wait for the `Release Windows Installer` workflow to finish.
-4. Download the installer from the GitHub Release page.
+3. Wait for the `Release Windows Installer` and `Release Mac RoomBoard App` workflows to finish.
+4. Download the `.exe` and `.dmg` installers from the GitHub Release page.
 
 Manual release option:
 
-1. Open the `Release Windows Installer` workflow in GitHub Actions.
+1. Open the `Release Windows Installer` or `Release Mac RoomBoard App` workflow in GitHub Actions.
 2. Run it manually with a tag like `v0.1.0`.
 3. The workflow will build the installer and create or update that GitHub Release.
+
+Mac release signing requires these GitHub repository secrets:
+
+```text
+MAC_CSC_LINK
+MAC_CSC_KEY_PASSWORD
+APPLE_TEAM_ID
+APPLE_API_KEY_P8
+APPLE_API_KEY_ID
+APPLE_API_ISSUER
+```
+
+You can use `APPLE_ID` and `APPLE_APP_SPECIFIC_PASSWORD` instead of the App Store Connect API key secrets. The Mac workflow verifies Developer ID signing, notarization, stapling, and Gatekeeper assessment before uploading the DMG.
+
+After the release finishes, the website Mac button points to:
+
+```text
+https://github.com/jacksonshelley0204-spec/Roomboard/releases/download/v0.1.0/RoomBoard-macOS.dmg
+```
 
 ### Publish a Windows capture app download release
 1. Push this repository to GitHub and make sure GitHub Actions is enabled.
@@ -192,12 +213,4 @@ Manual release option:
 https://github.com/OWNER/REPO/releases/download/capture-v0.1.0/RoomBoard-Capture-Setup-Windows-x64.exe
 ```
 
-### Publish a Mac capture app download release
-1. Push this repository to GitHub and make sure GitHub Actions is enabled.
-2. Create and push a capture Mac version tag such as `capture-mac-v0.1.0`, or run the `Release Capture Mac Installer` workflow manually.
-3. Wait for the workflow to finish.
-4. Use the stable download URL in `public/roomboard/config.js`:
-
-```text
-https://github.com/OWNER/REPO/releases/download/capture-mac-v0.1.0/RoomBoard-Capture-macOS.dmg
-```
+The legacy standalone Mac capture release should stay off the public website unless there is a short-term support reason to distribute it.

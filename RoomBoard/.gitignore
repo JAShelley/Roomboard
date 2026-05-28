@@ -5,3 +5,8 @@ dist
 build
 .env.local
 .DS_Store
+dist-capture
+dist-capture-mac
+public/roomboard/downloads/*.dmg
+public/roomboard/downloads/*.exe
+desktop/capture-helper-mac/.build

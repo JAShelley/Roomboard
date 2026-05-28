@@ -79,6 +79,14 @@
     });
 
     setupDownloadCard({
+      cardId: "desktopMacDownloadCard",
+      linkId: "desktopMacDownloadLink",
+      metaId: "desktopMacDownloadMeta",
+      url: window.__ROOMBOARD_MAC_DOWNLOAD_URL__,
+      filename: window.__ROOMBOARD_MAC_DOWNLOAD_FILENAME__ || "RoomBoard-macOS.dmg"
+    });
+
+    setupDownloadCard({
       cardId: "captureDownloadCard",
       linkId: "captureDownloadLink",
       metaId: "captureDownloadMeta",

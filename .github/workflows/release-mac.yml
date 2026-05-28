@@ -1,14 +1,13 @@
-name: Release Capture Mac Installer
+name: Release Mac RoomBoard App
 
 on:
   push:
     tags:
-      - "capture-v*"
-      - "capture-mac-v*"
+      - "v*"
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to create or update, for example capture-v0.1.5
+        description: Release tag to create or update, for example v0.1.0
         required: true
         type: string
 
@@ -16,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  release-capture-mac:
+  release-mac:
     runs-on: macos-latest
 
     env:
@@ -87,17 +86,17 @@ jobs:
           printf '%s' "$APPLE_API_KEY_P8" > "$api_key_path"
           echo "APPLE_API_KEY=$api_key_path" >> "$GITHUB_ENV"
 
-      - name: Build Capture Mac installer
+      - name: Build signed and notarized Mac app
         working-directory: RoomBoard
         shell: bash
-        run: npm run capture:dist:mac
+        run: npm run desktop:dist:mac:release
 
       - name: Verify Mac signing and Apple assessment
         shell: bash
         run: |
           shopt -s nullglob
-          apps=(RoomBoard/dist-capture-mac/mac*/RoomBoard\ Capture.app)
-          dmgs=(RoomBoard/dist-capture-mac/*.dmg)
+          apps=(RoomBoard/dist/mac*/RoomBoard.app)
+          dmgs=(RoomBoard/dist/*.dmg)
           if [ ${#apps[@]} -eq 0 ]; then
             echo "No packaged Mac app found for verification."
             exit 1
@@ -108,28 +107,21 @@ jobs:
           fi
 
           for app_path in "${apps[@]}"; do
-            codesign --verify --deep --strict --verbose=2 "$app_path"
-            codesign_info="$RUNNER_TEMP/codesign-info-$(basename "$app_path").txt"
-            codesign -dvvv "$app_path" >"$codesign_info" 2>&1
-            cat "$codesign_info"
-            grep -q "Authority=Developer ID Application:" "$codesign_info"
-            xcrun stapler validate "$app_path"
-            spctl --assess --type execute --verbose=4 "$app_path"
+            npm --prefix RoomBoard run mac:verify -- "$app_path"
           done
 
           for dmg_path in "${dmgs[@]}"; do
-            xcrun stapler validate "$dmg_path"
-            spctl --assess --type open --context context:primary-signature --verbose=4 "$dmg_path"
+            npm --prefix RoomBoard run mac:verify -- "$dmg_path"
           done
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: roomboard-capture-mac-release-${{ github.run_number }}
+          name: roomboard-mac-release-${{ github.run_number }}
           path: |
-            RoomBoard/dist-capture-mac/*.dmg
-            RoomBoard/dist-capture-mac/*.zip
-            RoomBoard/dist-capture-mac/latest*.yml
+            RoomBoard/dist/*.dmg
+            RoomBoard/dist/*.zip
+            RoomBoard/dist/latest*.yml
           if-no-files-found: error
 
       - name: Resolve release tag
@@ -149,18 +141,18 @@ jobs:
         shell: bash
         run: |
           shopt -s nullglob
-          assets=(RoomBoard/dist-capture-mac/*.dmg RoomBoard/dist-capture-mac/*.zip RoomBoard/dist-capture-mac/latest*.yml)
+          assets=(RoomBoard/dist/*.dmg RoomBoard/dist/*.zip RoomBoard/dist/latest*.yml)
 
           if [ ${#assets[@]} -eq 0 ]; then
-            echo "No capture Mac release assets were generated."
+            echo "No Mac release assets were generated."
             exit 1
           fi
 
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title "RoomBoard Capture $RELEASE_TAG" \
-              --notes "RoomBoard Capture installer release. Mac and Windows assets upload to this same release." \
+              --title "RoomBoard $RELEASE_TAG" \
+              --notes "Signed and notarized RoomBoard Mac app release." \
               || gh release view "$RELEASE_TAG" >/dev/null
           fi
 

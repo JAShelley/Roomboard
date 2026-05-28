@@ -10,19 +10,27 @@
   "extraMetadata": {
     "main": "desktop/capture-main.cjs",
     "name": "roomboard-capture-mac",
-    "description": "Mac appointment capture app for sending scheduler appointments into RoomBoard."
+    "description": "Mac appointment capture app for sending scheduler appointments into RoomBoard.",
+    "dependencies": {}
   },
   "files": [
     "desktop/capture-main.cjs",
+    "desktop/capture-service.cjs",
     "desktop/capture-preload.cjs",
     "desktop/capture-ui.html",
     "desktop/capture-ui.css",
     "desktop/capture-ui.js",
     "desktop/capture-overlay.html",
     "desktop/capture-overlay.js",
-    "package.json"
+    "package.json",
+    "!node_modules/**",
+    "!**/node_modules/**"
   ],
   "extraResources": [
+    {
+      "from": "build/icon.png",
+      "to": "tray-icon.png"
+    },
     {
       "from": "desktop/capture-helper-mac/.build/release",
       "to": "capture-helper-mac",
@@ -31,14 +39,21 @@
       ]
     }
   ],
-  "afterPack": "scripts/strip-mac-xattrs.mjs",
+  "afterPack": "scripts/strip-mac-xattrs.cjs",
+  "afterSign": "scripts/notarize-mac.cjs",
+  "afterAllArtifactBuild": "scripts/notarize-mac-artifacts.cjs",
   "mac": {
     "category": "public.app-category.productivity",
+    "extendInfo": {
+      "LSUIElement": true
+    },
     "binaries": [
       "Contents/Resources/capture-helper-mac/RoomBoardCaptureHelper"
     ],
-    "hardenedRuntime": false,
-    "identity": "-",
+    "forceCodeSigning": true,
+    "hardenedRuntime": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
     "target": [
       {
         "target": "dmg"

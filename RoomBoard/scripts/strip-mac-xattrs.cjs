@@ -1,8 +1,8 @@
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+const { readdirSync } = require("node:fs");
+const { join } = require("node:path");
+const { spawnSync } = require("node:child_process");
 
-export default async function stripMacExtendedAttributes(context) {
+exports.default = async function stripMacExtendedAttributes(context) {
   if (context.electronPlatformName !== "darwin") return;
 
   const appName = readdirSync(context.appOutDir).find((entry) => entry.endsWith(".app"));
@@ -10,8 +10,7 @@ export default async function stripMacExtendedAttributes(context) {
 
   const appPath = join(context.appOutDir, appName);
   run("dot_clean", ["-m", appPath], false);
-  run("xattr", ["-c", appPath], false);
-  run("xattr", ["-cr", appPath], true);
+  run("xattr", ["-cr", appPath], false);
 
   for (const attribute of [
     "com.apple.FinderInfo",
@@ -20,15 +19,17 @@ export default async function stripMacExtendedAttributes(context) {
     "com.apple.provenance",
     "com.apple.quarantine"
   ]) {
-    run("xattr", ["-d", attribute, appPath], false);
-    run("xattr", ["-dr", attribute, appPath], false);
+    run("xattr", ["-rd", attribute, appPath], false);
+    run("find", [appPath, "-exec", "xattr", "-d", attribute, "{}", ";"], false);
   }
-}
+
+  console.log(`Stripped macOS extended attributes from ${appPath}`);
+};
 
 function run(command, args, required) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
-    stdio: "pipe"
+    stdio: required ? "pipe" : "ignore"
   });
 
   if (required && result.status !== 0) {

@@ -19,6 +19,11 @@
     "desktop:dist": "electron-builder",
     "predesktop:dist:win": "npm run desktop:assets",
     "desktop:dist:win": "electron-builder --win nsis",
+    "predesktop:dist:mac": "npm run desktop:assets && npm run capture:helper:build:mac",
+    "desktop:dist:mac": "electron-builder --mac",
+    "predesktop:dist:mac:release": "npm run desktop:assets && npm run capture:helper:build:mac",
+    "desktop:dist:mac:release": "ROOMBOARD_REQUIRE_NOTARIZATION=1 electron-builder --mac",
+    "mac:verify": "node scripts/verify-mac-notarization.cjs",
     "capture:dev": "electron desktop/capture-main.cjs",
     "capture:helper:build": "dotnet publish desktop/capture-helper/RoomBoard.Capture.Helper.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true",
     "capture:helper:build:mac": "swift build -c release --package-path desktop/capture-helper-mac",
@@ -52,11 +57,48 @@
     },
     "productName": "RoomBoard",
     "asar": true,
+    "afterPack": "scripts/strip-mac-xattrs.cjs",
+    "afterSign": "scripts/notarize-mac.cjs",
+    "afterAllArtifactBuild": "scripts/notarize-mac-artifacts.cjs",
     "files": [
       "desktop/**/*",
       "public/roomboard/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "tray-icon.png"
+      }
+    ],
+    "mac": {
+      "artifactName": "RoomBoard-macOS.${ext}",
+      "category": "public.app-category.productivity",
+      "extraResources": [
+        {
+          "from": "desktop/capture-helper-mac/.build/release",
+          "to": "capture-helper-mac",
+          "filter": [
+            "RoomBoardCaptureHelper"
+          ]
+        }
+      ],
+      "binaries": [
+        "Contents/Resources/capture-helper-mac/RoomBoardCaptureHelper"
+      ],
+      "forceCodeSigning": true,
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "target": [
+        {
+          "target": "dmg"
+        },
+        {
+          "target": "zip"
+        }
+      ]
+    },
     "win": {
       "icon": "build/icon.ico",
       "target": [

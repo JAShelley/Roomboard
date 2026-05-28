@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to create or update, for example capture-v0.1.0
+        description: Release tag to create or update, for example capture-v0.1.5
         required: true
         type: string
 
@@ -85,11 +85,12 @@ jobs:
             exit 1
           fi
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" \
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
               --title "RoomBoard Capture $RELEASE_TAG" \
-              --notes "Windows installer build for RoomBoard Capture."
+              --notes "RoomBoard Capture installer release. Mac and Windows assets upload to this same release." \
+              || gh release view "$RELEASE_TAG" >/dev/null
           fi
+
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber

@@ -7,17 +7,21 @@
   const state = {
     auth: readJson(AUTH_STORAGE_KEY),
     boardData: null,
-    captured: null
+    captured: null,
+    lastHover: null,
+    lastStatus: null
   };
 
   const els = {
     email: document.getElementById("emailInput"),
     password: document.getElementById("passwordInput"),
+    connectionPanel: document.getElementById("connectionPanel"),
     login: document.getElementById("loginBtn"),
     loadBoard: document.getElementById("loadBoardBtn"),
     refreshStatus: document.getElementById("refreshStatusBtn"),
     arm: document.getElementById("armCaptureBtn"),
     stop: document.getElementById("stopCaptureBtn"),
+    pasteClipboard: document.getElementById("pasteClipboardBtn"),
     connectionStatus: document.getElementById("connectionStatus"),
     captureStatus: document.getElementById("captureStatus"),
     hoverPreview: document.getElementById("hoverPreview"),
@@ -36,17 +40,23 @@
     doctorReady: document.getElementById("doctorReadyInput"),
     send: document.getElementById("sendBtn"),
     clear: document.getElementById("clearBtn"),
-    sendStatus: document.getElementById("sendStatus")
+    copyDiagnostics: document.getElementById("copyDiagnosticsBtn"),
+    sendStatus: document.getElementById("sendStatus"),
+    diagnosticOutput: document.getElementById("diagnosticOutput")
   };
 
   const TIME_RANGE_RE = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i;
   const SINGLE_TIME_RE = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i;
   const DOCTOR_RE = /\b(?:dr\.?|doctor|dvm|d\.v\.m\.|provider|vet)\b/i;
+  const CALENDAR_DEMOGRAPHIC_RE = /^[^\w(]*(?:\([A-Z?]\s*,?\s*\d{0,3}\)\s*)?([A-Z][A-Za-z'`.-]+(?:\s+[A-Z][A-Za-z'`.-]+)*(?:\s+\([^)]+\))?)/;
+  const PHONE_RE = /\b(?:\(?\d{3}\)?[-.\s]*)?\d{3}[-.\s]\d{4}\b|\(\d{3}\)/;
+  const CONTACT_LINE_RE = /^(?:[HWC]\.?\s*)?(?:\(?\d{3}\)?[-.\s]*)?\d{3}[-.\s]\d{4}\b/i;
 
   boot();
 
   function boot() {
     if (state.auth?.email) els.email.value = state.auth.email;
+    if (els.connectionPanel && !state.auth?.email) els.connectionPanel.open = true;
     populateSelect(els.room, [], "Load board first");
     populateSelect(els.colorLabel, [], "Load board first");
     populateSelect(els.doctor, [""], "No doctor");
@@ -57,23 +67,33 @@
     els.refreshStatus.addEventListener("click", refreshStatus);
     els.arm.addEventListener("click", armCapture);
     els.stop.addEventListener("click", stopCapture);
+    els.pasteClipboard.addEventListener("click", captureClipboardText);
     els.send.addEventListener("click", sendAppointment);
     els.clear.addEventListener("click", clearCapture);
+    els.copyDiagnostics.addEventListener("click", copyDiagnostics);
 
     api?.onStatus((payload) => {
+      state.lastStatus = payload || null;
       if (payload?.message) setStatus(els.captureStatus, payload.message, payload.armed ? "ok" : "");
       els.arm.disabled = !!payload?.armed;
       els.stop.disabled = !payload?.armed;
+      updateDiagnostics();
     });
 
     api?.onHover((payload) => {
+      state.lastHover = payload || null;
       const text = summarizeCapturePayload(payload);
       els.hoverPreview.textContent = text || "No appointment under cursor.";
+      updateDiagnostics();
     });
 
     api?.onCaptured((payload) => {
       applyCapturedAppointment(payload);
     });
+
+    api?.getLastCaptured?.().then((payload) => {
+      if (payload) applyCapturedAppointment(payload);
+    }).catch(() => {});
 
     refreshStatus();
     if (state.auth?.accessToken || state.auth?.refreshToken) {
@@ -111,7 +131,7 @@
 
   async function loadBoard() {
     if (!state.auth?.accessToken && !state.auth?.refreshToken) {
-      throw new Error("Login before loading the board.");
+      throw new Error("Sign in before loading the board.");
     }
 
     setStatus(els.connectionStatus, "Loading board...");
@@ -125,22 +145,47 @@
 
   async function refreshStatus() {
     const status = await api?.getStatus?.();
+    state.lastStatus = status || null;
     const hotkey = status?.hotkey ? ` Hotkey: ${status.hotkey}.` : "";
     const platform = status?.helperPlatform ? `${status.helperPlatform} ` : "";
     const helper = status?.helperAvailable ? `${platform}helper ready.` : `${platform}helper not built or not available on this platform.`;
     setStatus(els.captureStatus, `${helper}${hotkey}`, status?.helperAvailable ? "ok" : "");
     els.arm.disabled = !!status?.armed;
     els.stop.disabled = !status?.armed;
+    updateDiagnostics();
   }
 
   async function armCapture() {
+    setStatus(els.captureStatus, "Capturing selected appointment...");
     const result = await api?.start?.();
-    setStatus(els.captureStatus, result?.message || "Capture armed.", result?.ok ? "ok" : "error");
+    setStatus(els.captureStatus, result?.message || "Capture complete.", result?.ok ? "ok" : "error");
   }
 
   async function stopCapture() {
     const result = await api?.stop?.();
     setStatus(els.captureStatus, result?.message || "Capture cancelled.");
+  }
+
+  async function captureClipboardText() {
+    try {
+      const text = normalizeClipboardText(await api?.readClipboardText?.());
+      if (!text) throw new Error("Clipboard does not contain appointment text.");
+
+      applyCapturedAppointment({
+        type: "capture",
+        text,
+        name: "",
+        captureMethod: "clipboard",
+        windowTitle: "Clipboard",
+        processName: "",
+        bounds: null,
+        visualBounds: null,
+        imageDataUrl: null
+      });
+      setStatus(els.captureStatus, "Clipboard text loaded.", "ok");
+    } catch (error) {
+      setStatus(els.captureStatus, getErrorMessage(error), "error");
+    }
   }
 
   function populateBoardControls() {
@@ -193,15 +238,19 @@
     setSelectByText(els.doctor, parsed.doctor);
     setSelectByText(els.colorLabel, parsed.reason);
     els.notes.value = buildNotes(parsed, payload);
-    const method = payload?.captureMethod === "visual-block" ? " Visual block detected." : "";
-    setStatus(els.sendStatus, `Review the appointment, choose a room, then send.${method}`, "ok");
+    const method = /visual|screen|preview/i.test(String(payload?.captureMethod || "")) ? " Preview attached." : "";
+    const message = parsed.rawText
+      ? `Appointment ready.${method}`
+      : "Screen preview captured.";
+    setStatus(els.sendStatus, message, "ok");
+    updateDiagnostics();
   }
 
   function parseCapturedText(payload) {
     const rawText = String(payload?.text || payload?.name || "").trim();
     const lines = rawText
       .split(/\r?\n|\s+\|\s+/)
-      .map((line) => normalizeSpaces(line))
+      .map((line) => normalizeCalendarLine(line))
       .filter(Boolean)
       .filter((line, index, all) => all.indexOf(line) === index);
 
@@ -210,20 +259,17 @@
       || "";
 
     const doctor = lines.find((line) => DOCTOR_RE.test(line)) || "";
-    const patientName = lines.find((line) => {
-      if (!line) return false;
-      if (line === appointmentTime || TIME_RANGE_RE.test(line) || SINGLE_TIME_RE.test(line)) return false;
-      if (DOCTOR_RE.test(line)) return false;
-      if (line.length > 48 && line.split(/\s+/).length > 5) return false;
-      return true;
-    }) || "";
+    const patientLineIndex = findPatientLineIndex(lines, appointmentTime);
+    const patientName = patientLineIndex >= 0 ? extractCalendarPatientName(lines[patientLineIndex]) : "";
 
-    const reason = lines.filter((line) => {
+    const reasonLines = lines.filter((line, index) => {
       if (!line) return false;
-      if (line === patientName || line === doctor || line === appointmentTime) return false;
+      if (index === patientLineIndex || line === patientName || line === doctor || line === appointmentTime) return false;
       if (TIME_RANGE_RE.test(line) || SINGLE_TIME_RE.test(line)) return false;
+      if (!isLikelyAppointmentReasonLine(line)) return false;
       return true;
-    }).slice(0, 3).join(", ");
+    });
+    const reason = reasonLines.slice(0, 3).join(", ");
 
     return {
       patientName,
@@ -232,6 +278,69 @@
       appointmentTime,
       rawText
     };
+  }
+
+  function normalizeCalendarLine(line) {
+    return normalizeSpaces(line)
+      .replace(/^[|•·*]+/, "")
+      .replace(/\s+[xX]\s*$/, "")
+      .trim();
+  }
+
+  function findPatientLineIndex(lines, appointmentTime) {
+    const demographicIndex = lines.findIndex((line) => {
+      if (!isLikelyPatientLine(line, appointmentTime)) return false;
+      return /^\W*\([A-Z?]\s*,?\s*\d{0,3}\)/i.test(line);
+    });
+    if (demographicIndex >= 0) return demographicIndex;
+
+    return lines.findIndex((line) => isLikelyPatientLine(line, appointmentTime));
+  }
+
+  function isLikelyPatientLine(line, appointmentTime) {
+    if (!line) return false;
+    if (line === appointmentTime || TIME_RANGE_RE.test(line) || SINGLE_TIME_RE.test(line)) return false;
+    if (DOCTOR_RE.test(line)) return false;
+    if (PHONE_RE.test(line) || CONTACT_LINE_RE.test(line)) return false;
+    if (/^lunch$/i.test(line)) return false;
+    if (/^(?:pro|bw|bwx|exam|pexam|tx|srp|oh|fmxl?|pfm|comp)\b/i.test(line)) return false;
+
+    const name = extractCalendarPatientName(line);
+    if (!name || name.length > 60) return false;
+    const words = name.replace(/\([^)]+\)/g, "").trim().split(/\s+/).filter(Boolean);
+    if (words.length < 2 || words.length > 5) return false;
+    return words.every((word) => /^[A-Za-z'`.-]+$/.test(word));
+  }
+
+  function extractCalendarPatientName(line) {
+    const cleaned = normalizeSpaces(line)
+      .replace(/^[?!*+\-–—\s]+/, "")
+      .replace(/^\([A-Z?]\s*,?\s*\d{0,3}\)\s*/i, "")
+      .replace(/^\[[^\]]+\]\s*/, "")
+      .replace(/\s+[xX]\s*$/, "")
+      .trim();
+
+    const match = cleaned.match(CALENDAR_DEMOGRAPHIC_RE);
+    return normalizeSpaces(match?.[1] || cleaned)
+      .replace(/[,:;]+$/, "")
+      .trim();
+  }
+
+  function isLikelyAppointmentReasonLine(line) {
+    const text = normalizeSpaces(line);
+    if (!text) return false;
+    if (/^lunch$/i.test(text)) return false;
+    if (PHONE_RE.test(text) || CONTACT_LINE_RE.test(text)) return false;
+    if (/^(?:h|w|c)\.?\s+/i.test(text) && /\d/.test(text)) return false;
+    if (/^\(?\d+\)?$/.test(text)) return false;
+
+    const upperRatio = text.replace(/[^A-Za-z]/g, "").split("").filter((ch) => ch === ch.toUpperCase()).length
+      / Math.max(1, text.replace(/[^A-Za-z]/g, "").length);
+    const hasProcedureShape = /(?:\b[A-Z]{2,}\b|\b[A-Z]+\([^)]{1,12}\)|,)/.test(text);
+    const hasLetters = /[A-Za-z]/.test(text);
+    const digitRatio = text.replace(/\D/g, "").length / Math.max(1, text.length);
+
+    return hasLetters && digitRatio < 0.35 && (hasProcedureShape || upperRatio > 0.6 || text.length <= 42);
   }
 
   function buildNotes(parsed, payload) {
@@ -281,7 +390,7 @@
   }
 
   async function ensureValidAuthSession() {
-    if (!state.auth?.accessToken && !state.auth?.refreshToken) throw new Error("Login required.");
+    if (!state.auth?.accessToken && !state.auth?.refreshToken) throw new Error("Sign in required.");
 
     const expiresAt = Number(state.auth.expiresAt || 0);
     if (state.auth.accessToken && expiresAt > Date.now() + 60 * 1000) return state.auth;
@@ -581,7 +690,7 @@
 
   async function sendAppointment() {
     try {
-      if (!state.auth?.accessToken && !state.auth?.refreshToken) throw new Error("Login before sending.");
+      if (!state.auth?.accessToken && !state.auth?.refreshToken) throw new Error("Sign in before sending.");
       if (!state.boardData) await loadBoard();
       if (!String(els.room.value || "").trim()) throw new Error("Choose a room.");
       if (!String(els.patientName.value || "").trim()) throw new Error("Patient name is required.");
@@ -619,11 +728,75 @@
     els.doctorReady.checked = false;
     els.capturePreviewImage.removeAttribute("src");
     els.capturePreview.hidden = true;
-    setStatus(els.sendStatus, "Capture an appointment to start.");
+    setStatus(els.sendStatus, "No appointment captured.");
+    updateDiagnostics();
+  }
+
+  async function copyDiagnostics() {
+    try {
+      const diagnostics = buildDiagnostics({ includeRawText: true });
+      await api?.copyText?.(JSON.stringify(diagnostics, null, 2));
+      setStatus(els.sendStatus, "Diagnostics copied.", "ok");
+    } catch (error) {
+      setStatus(els.sendStatus, getErrorMessage(error), "error");
+    }
+  }
+
+  function updateDiagnostics() {
+    if (!els.diagnosticOutput) return;
+    els.diagnosticOutput.textContent = JSON.stringify(buildDiagnostics({ includeRawText: false }), null, 2);
+  }
+
+  function buildDiagnostics(options) {
+    const includeRawText = !!options?.includeRawText;
+    const captured = state.captured || null;
+    const parsed = captured?.parsed || null;
+    const hover = state.lastHover || null;
+    const status = state.lastStatus || null;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      app: "RoomBoard Capture",
+      helper: {
+        platform: status?.helperPlatform || "",
+        available: !!status?.helperAvailable,
+        armed: !!status?.armed,
+        hotkey: status?.hotkey || ""
+      },
+      source: captured ? {
+        method: captured.captureMethod || "",
+        windowTitle: captured.windowTitle || "",
+        processName: captured.processName || "",
+        controlType: captured.controlType || "",
+        className: captured.className || "",
+        hasImage: !!captured.imageDataUrl,
+        bounds: captured.bounds || null,
+        visualBounds: captured.visualBounds || null,
+        textLength: String(captured.text || captured.name || "").length,
+        textPreview: redactPreview(captured.text || captured.name || ""),
+        rawText: includeRawText ? String(captured.text || captured.name || "") : undefined
+      } : null,
+      hover: hover ? {
+        method: hover.captureMethod || "",
+        windowTitle: hover.windowTitle || "",
+        processName: hover.processName || "",
+        hasText: !!normalizeSpaces(hover.text || hover.name || ""),
+        hasVisualBounds: !!hover.visualBounds,
+        bounds: hover.bounds || null,
+        visualBounds: hover.visualBounds || null
+      } : null,
+      parsed: parsed ? {
+        patientName: parsed.patientName ? "[captured]" : "",
+        reason: parsed.reason || "",
+        doctor: parsed.doctor || "",
+        appointmentTime: parsed.appointmentTime || ""
+      } : null
+    };
   }
 
   function summarizeCapturePayload(payload) {
     const text = normalizeSpaces(payload?.text || payload?.name || "");
+    if (!text && payload?.visualBounds) return "Appointment box detected.";
     if (!text) return "";
     return text.length > 180 ? `${text.slice(0, 177)}...` : text;
   }
@@ -636,6 +809,26 @@
 
   function normalizeSpaces(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function normalizeClipboardText(value) {
+    return String(value || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n")
+      .map((line) => normalizeSpaces(line))
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+  }
+
+  function redactPreview(value) {
+    const text = normalizeSpaces(value);
+    if (!text) return "";
+    return text
+      .replace(/\b(?:\(?\d{3}\)?[-.\s]*)?\d{3}[-.\s]\d{4}\b/g, "[phone]")
+      .replace(/\(\d{3}\)/g, "[area]")
+      .slice(0, 180);
   }
 
   function normalizeLoose(value) {
