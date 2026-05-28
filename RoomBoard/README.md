@@ -82,8 +82,8 @@ RoomBoard-macOS.dmg
 That gives you stable direct-download URL patterns:
 
 ```text
-https://github.com/jacksonshelley0204-spec/Roomboard/releases/download/v0.1.0/RoomBoard-Setup-Windows-x64.exe
-https://github.com/jacksonshelley0204-spec/Roomboard/releases/download/v0.1.0/RoomBoard-macOS.dmg
+https://github.com/JAShelley/Roomboard/releases/download/v0.1.0/RoomBoard-Setup-Windows-x64.exe
+https://github.com/JAShelley/Roomboard/releases/download/v0.1.0/RoomBoard-macOS.dmg
 ```
 
 The website download cards use `window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__` and `window.__ROOMBOARD_MAC_DOWNLOAD_URL__` from `public/roomboard/config.js`. Update `window.__ROOMBOARD_RELEASE_TAG__` there when publishing a new app release tag.
@@ -200,7 +200,7 @@ You can use `APPLE_ID` and `APPLE_APP_SPECIFIC_PASSWORD` instead of the App Stor
 After the release finishes, the website Mac button points to:
 
 ```text
-https://github.com/jacksonshelley0204-spec/Roomboard/releases/download/v0.1.0/RoomBoard-macOS.dmg
+https://github.com/JAShelley/Roomboard/releases/download/v0.1.0/RoomBoard-macOS.dmg
 ```
 
 ### Publish a Windows capture app download release

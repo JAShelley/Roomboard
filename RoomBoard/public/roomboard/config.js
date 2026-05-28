@@ -11,13 +11,13 @@ window.__ROOMBOARD_RELEASE_TAG__ =
   window.__ROOMBOARD_RELEASE_TAG__ || "v0.1.0";
 window.__ROOMBOARD_RELEASE_BASE_URL__ =
   window.__ROOMBOARD_RELEASE_BASE_URL__ ||
-  "https://github.com/jacksonshelley0204-spec/Roomboard/releases/download/" +
+  "https://github.com/JAShelley/Roomboard/releases/download/" +
     window.__ROOMBOARD_RELEASE_TAG__;
 window.__ROOMBOARD_CAPTURE_RELEASE_TAG__ =
   window.__ROOMBOARD_CAPTURE_RELEASE_TAG__ || "capture-v0.1.5";
 window.__ROOMBOARD_CAPTURE_RELEASE_BASE_URL__ =
   window.__ROOMBOARD_CAPTURE_RELEASE_BASE_URL__ ||
-  "https://github.com/jacksonshelley0204-spec/Roomboard/releases/download/" +
+  "https://github.com/JAShelley/Roomboard/releases/download/" +
     window.__ROOMBOARD_CAPTURE_RELEASE_TAG__;
 window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__ =
   window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__ ||
