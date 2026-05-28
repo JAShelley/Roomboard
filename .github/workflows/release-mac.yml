@@ -92,11 +92,12 @@ jobs:
         run: npm run desktop:dist:mac:release
 
       - name: Verify Mac signing and Apple assessment
+        working-directory: RoomBoard
         shell: bash
         run: |
           shopt -s nullglob
-          apps=(RoomBoard/dist/mac*/RoomBoard.app)
-          dmgs=(RoomBoard/dist/*.dmg)
+          apps=(dist/mac*/RoomBoard.app)
+          dmgs=(dist/*.dmg)
           if [ ${#apps[@]} -eq 0 ]; then
             echo "No packaged Mac app found for verification."
             exit 1
@@ -107,11 +108,11 @@ jobs:
           fi
 
           for app_path in "${apps[@]}"; do
-            npm --prefix RoomBoard run mac:verify -- "$app_path"
+            npm run mac:verify -- "$app_path"
           done
 
           for dmg_path in "${dmgs[@]}"; do
-            npm --prefix RoomBoard run mac:verify -- "$dmg_path"
+            npm run mac:verify -- "$dmg_path"
           done
 
       - name: Upload workflow artifact
