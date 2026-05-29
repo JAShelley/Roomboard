@@ -245,6 +245,7 @@ app.on("activate", async () => {
 app.whenReady().then(async () => {
   captureService = createCaptureService({
     captureLabel: "Capture Appointment",
+    captureTimeoutMs: 30000,
     desktopPath,
     getTargetWindow: () => mainWindow,
     macTrayActiveTitle: "RoomBoard ON",

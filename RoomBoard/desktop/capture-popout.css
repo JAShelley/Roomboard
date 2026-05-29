@@ -7,6 +7,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   background: #eef3f7;
   color: #0f172a;
@@ -81,6 +85,88 @@ h1 {
   max-height: 165px;
   max-width: 100%;
   object-fit: contain;
+}
+
+.captureReview {
+  background: #fff;
+  border: 1px solid #d6dee8;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.captureReviewHeader {
+  align-items: center;
+  color: #0f172a;
+  display: flex;
+  font-size: 13px;
+  font-weight: 800;
+  justify-content: space-between;
+}
+
+.reviewGrid {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.reviewItem {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.reviewItem span {
+  color: #64748b;
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.reviewItem strong {
+  color: #0f172a;
+  display: block;
+  font-size: 12px;
+  line-height: 1.3;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.warningList {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  color: #9a3412;
+  display: grid;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 4px;
+  line-height: 1.35;
+  padding: 8px;
+}
+
+.diagnosticsPanel summary {
+  color: #526173;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.diagnosticsPanel pre {
+  background: #0f172a;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin: 8px 0 0;
+  max-height: 150px;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
 }
 
 .formGrid {
@@ -169,6 +255,13 @@ button:disabled {
   height: 34px;
   padding: 0;
   width: 34px;
+}
+
+.quietButton {
+  border-color: #d6dee8;
+  font-size: 11px;
+  min-height: 28px;
+  padding: 5px 8px;
 }
 
 @media (max-width: 390px) {

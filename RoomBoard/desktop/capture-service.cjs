@@ -58,6 +58,7 @@ function createCaptureService(options = {}) {
   const quickSendWindowOptions = options.quickSendWindowOptions || {};
   const trayClickAction = options.trayClickAction || "capture";
   const menuBarOnlyCaptureMessage = "Use the RoomBoard menu bar button to arm capture.";
+  const captureTimeoutMs = Math.max(5000, Number(options.captureTimeoutMs || 30000));
 
   let overlayWindow = null;
   let overlayBounds = null;
@@ -68,6 +69,7 @@ function createCaptureService(options = {}) {
   let tray = null;
   let lastTrayRightClickAt = 0;
   let lastCapturedPayload = null;
+  let captureTimeoutTimer = null;
   let reviewWindow = null;
   let reviewWindowShouldOpenWhenReady = false;
   let pendingReviewStatusMessage = null;
@@ -214,6 +216,21 @@ function createCaptureService(options = {}) {
     if (IS_MAC) {
       tray.setTitle(isArmed ? macTrayActiveTitle : macTrayIdleTitle);
     }
+  }
+
+  function scheduleCaptureTimeout() {
+    clearCaptureTimeout();
+    captureTimeoutTimer = setTimeout(() => {
+      if (isArmed) {
+        stopCapture("Capture timed out.");
+      }
+    }, captureTimeoutMs);
+  }
+
+  function clearCaptureTimeout() {
+    if (!captureTimeoutTimer) return;
+    clearTimeout(captureTimeoutTimer);
+    captureTimeoutTimer = null;
   }
 
   function openReviewSurface(statusMessage) {
@@ -666,6 +683,7 @@ function createCaptureService(options = {}) {
     isArmed = true;
     updateTray();
     sendStatus("Capturing selected appointment. If nothing is selected, the app will use a screen preview.");
+    scheduleCaptureTimeout();
 
     try {
       const copiedText = await copySelectedTextFromActiveApp();
@@ -696,12 +714,14 @@ function createCaptureService(options = {}) {
 
       const message = "No appointment text or screen preview was captured. Copy the appointment text, then use the capture button again.";
       isArmed = false;
+      clearCaptureTimeout();
       updateTray();
       sendStatus(message);
       return { ok: false, message };
     } catch (error) {
       const message = String(error?.message || error || "Capture failed.");
       isArmed = false;
+      clearCaptureTimeout();
       updateTray();
       sendStatus(message);
       return { ok: false, message };
@@ -733,6 +753,7 @@ function createCaptureService(options = {}) {
 
     await ensureOverlayWindow();
     isArmed = true;
+    scheduleCaptureTimeout();
     monitorBuffer = "";
     lastHoverPayload = null;
 
@@ -752,17 +773,20 @@ function createCaptureService(options = {}) {
       monitorProcess = null;
       if (isArmed) {
         isArmed = false;
+        clearCaptureTimeout();
         closeOverlayWindow();
+        updateTray();
         sendStatus(`Capture helper stopped${code == null ? "." : ` (${code}).`}`);
       }
     });
 
-    sendStatus("Capture armed. Hover an appointment box, then click it.");
+    sendStatus(`Capture armed. Hover an appointment box, then click it. Right-click cancels. Auto-cancels in ${Math.round(captureTimeoutMs / 1000)}s.`);
     return { ok: true, message: "Capture armed." };
   }
 
   function stopCapture(message = "Capture stopped.") {
     isArmed = false;
+    clearCaptureTimeout();
 
     if (monitorProcess) {
       try {

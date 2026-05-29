@@ -273,6 +273,7 @@
   function buildQuickSendSnapshot(options = {}) {
     const data = state.boardData || getActiveBoardData() || { rooms: [], colorLabels: [], doctors: [""], quickNotes: [""] };
     const form = state.form || buildFallbackFormState(state.captured);
+    const diagnostics = buildCaptureDiagnostics(data, form);
     return {
       statusMessage: options.statusMessage || (state.captured ? "Review the fields, then send." : "Capture an appointment from the menu bar."),
       statusKind: options.statusKind || "",
@@ -296,6 +297,9 @@
         value: note,
         label: note || "No quick note"
       })),
+      confidence: buildCaptureConfidence(data, form),
+      warnings: buildCaptureWarnings(data, form),
+      diagnostics,
       captured: state.captured ? {
         method: state.captured.captureMethod || "",
         hasImage: !!state.captured.imageDataUrl,
@@ -303,6 +307,73 @@
         roomHint: state.captured.parsed?.roomHint || "",
         appointmentTime: state.captured.parsed?.appointmentTime || ""
       } : null
+    };
+  }
+
+  function buildCaptureConfidence(boardData, form) {
+    const parsed = state.captured?.parsed || {};
+    const room = findRoomById(boardData, form.roomId);
+    const label = findColorLabelById(boardData, form.colorLabelId);
+    return {
+      patient: parsed.patientName ? "Detected from capture text" : "Not found in capture",
+      room: parsed.roomHint && room ? `Matched ${room.name || "room"} from scheduler` : (room ? "First open room fallback" : "No room selected"),
+      type: parsed.reason && label ? `Matched ${label.title || "type"} from appointment` : (label ? "Default type fallback" : "No type selected"),
+      doctor: form.doctor ? "Matched from doctor/provider text" : "No doctor detected"
+    };
+  }
+
+  function buildCaptureWarnings(boardData, form) {
+    const warnings = [];
+    const room = findRoomById(boardData, form.roomId);
+    if (!normalizeSpaces(form.patientName)) warnings.push("Patient was not detected. Review before sending.");
+    if (!normalizeSpaces(form.colorLabelId)) warnings.push("Appointment type is missing.");
+    if (room?.patientName) warnings.push(`${room.name || "Selected room"} already has ${normalizeSpaces(room.patientName)}.`);
+    if (room?.needsCleaning) warnings.push(`${room.name || "Selected room"} is marked cleaning.`);
+    if (state.captured?.imageDataUrl && !normalizeSpaces(state.captured?.parsed?.rawText || "")) {
+      warnings.push("This capture came from an image preview. Review text carefully.");
+    }
+    return warnings;
+  }
+
+  function buildCaptureDiagnostics(boardData, form) {
+    const captured = state.captured || null;
+    if (!captured) return null;
+    const parsed = captured?.parsed || {};
+    const room = findRoomById(boardData, form.roomId);
+    const label = findColorLabelById(boardData, form.colorLabelId);
+    return {
+      generatedAt: new Date().toISOString(),
+      source: captured ? {
+        method: captured.captureMethod || "",
+        windowTitle: captured.windowTitle || "",
+        processName: captured.processName || "",
+        controlType: captured.controlType || "",
+        hasImage: !!captured.imageDataUrl,
+        bounds: captured.bounds || null,
+        visualBounds: captured.visualBounds || null,
+        textLength: String(captured.text || captured.name || "").length,
+        textPreview: redactPreview(captured.text || captured.name || "")
+      } : null,
+      parsed: {
+        patientName: parsed.patientName || "",
+        appointmentTime: parsed.appointmentTime || "",
+        reason: parsed.reason || "",
+        doctor: parsed.doctor || "",
+        roomHint: parsed.roomHint || "",
+        columnHeader: parsed.columnHeader || ""
+      },
+      selected: {
+        roomId: form.roomId || "",
+        roomName: room?.name || "",
+        roomOccupied: !!normalizeSpaces(room?.patientName || ""),
+        roomNeedsCleaning: !!room?.needsCleaning,
+        typeId: form.colorLabelId || "",
+        typeTitle: label?.title || "",
+        doctor: form.doctor || "",
+        hasPatientName: !!normalizeSpaces(form.patientName || "")
+      },
+      confidence: buildCaptureConfidence(boardData, form),
+      warnings: buildCaptureWarnings(boardData, form)
     };
   }
 
@@ -1102,6 +1173,23 @@
 
   function extractFirstNumber(value) {
     return normalizeSpaces(value).match(/\d+/)?.[0] || "";
+  }
+
+  function findRoomById(boardData, roomId) {
+    const rooms = Array.isArray(boardData?.rooms) ? boardData.rooms : [];
+    return rooms.find((room) => room?.id === roomId) || null;
+  }
+
+  function findColorLabelById(boardData, colorLabelId) {
+    const labels = Array.isArray(boardData?.colorLabels) ? boardData.colorLabels : [];
+    return labels.find((label) => label?.id === colorLabelId) || null;
+  }
+
+  function redactPreview(value) {
+    return normalizeSpaces(value)
+      .replace(/\b(?:\(?\d{3}\)?[-.\s]*)?\d{3}[-.\s]\d{4}\b/g, "[phone]")
+      .replace(/\(\d{3}\)/g, "[area]")
+      .slice(0, 240);
   }
 
   function formatRoomOption(room) {

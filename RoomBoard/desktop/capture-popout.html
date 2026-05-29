@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RoomBoard Quick Send</title>
-  <link rel="stylesheet" href="./capture-popout.css">
+  <link rel="stylesheet" href="./capture-popout.css?v=20260529a">
 </head>
 <body>
   <main class="quickSendShell">
@@ -21,6 +21,19 @@
     <div class="preview" id="preview" hidden>
       <img alt="Captured appointment preview" id="previewImage">
     </div>
+
+    <section class="captureReview" id="captureReview" hidden>
+      <div class="captureReviewHeader">
+        <span>Capture Review</span>
+        <button class="quietButton" id="copyDiagnosticsBtn" type="button">Copy Diagnostics</button>
+      </div>
+      <div class="reviewGrid" id="reviewGrid"></div>
+      <div class="warningList" id="warningList" hidden></div>
+      <details class="diagnosticsPanel">
+        <summary>Details</summary>
+        <pre id="diagnosticsOutput"></pre>
+      </details>
+    </section>
 
     <section class="formGrid" aria-label="Captured appointment">
       <label class="field fieldFull">
@@ -63,6 +76,6 @@
       <button class="primary" id="sendBtn" type="button">Send</button>
     </footer>
   </main>
-  <script src="./capture-popout.js"></script>
+  <script src="./capture-popout.js?v=20260529a"></script>
 </body>
 </html>

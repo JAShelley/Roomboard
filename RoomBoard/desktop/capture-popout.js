@@ -9,6 +9,11 @@
     status: document.getElementById("statusLine"),
     preview: document.getElementById("preview"),
     previewImage: document.getElementById("previewImage"),
+    captureReview: document.getElementById("captureReview"),
+    reviewGrid: document.getElementById("reviewGrid"),
+    warningList: document.getElementById("warningList"),
+    copyDiagnostics: document.getElementById("copyDiagnosticsBtn"),
+    diagnosticsOutput: document.getElementById("diagnosticsOutput"),
     room: document.getElementById("roomSelect"),
     patient: document.getElementById("patientInput"),
     type: document.getElementById("typeSelect"),
@@ -41,6 +46,7 @@
     if (els.capture) els.capture.addEventListener("click", capture);
     els.send.addEventListener("click", send);
     els.openRoomBoard.addEventListener("click", () => request("open-main", {}));
+    els.copyDiagnostics.addEventListener("click", copyDiagnostics);
 
     api.onStatus((payload) => {
       const message = normalizeSpaces(payload?.message || "");
@@ -100,6 +106,16 @@
     return await api.quickSendRequest(action, payload);
   }
 
+  async function copyDiagnostics() {
+    try {
+      const diagnostics = state.lastSnapshot?.diagnostics || {};
+      await api.copyText(JSON.stringify(diagnostics, null, 2));
+      setStatus("Capture diagnostics copied.", "ok");
+    } catch (error) {
+      setStatus(getErrorMessage(error), "error");
+    }
+  }
+
   function applySnapshot(snapshot) {
     if (!snapshot || typeof snapshot !== "object") return;
     state.lastSnapshot = snapshot;
@@ -112,6 +128,7 @@
 
     renderForm();
     renderPreview(snapshot);
+    renderReview(snapshot);
     setStatus(snapshot.statusMessage || "Ready.", snapshot.statusKind || "");
   }
 
@@ -124,6 +141,41 @@
     }
     els.previewImage.removeAttribute("src");
     els.preview.hidden = true;
+  }
+
+  function renderReview(snapshot) {
+    const diagnostics = snapshot?.diagnostics || null;
+    const confidence = snapshot?.confidence || {};
+    const warnings = Array.isArray(snapshot?.warnings) ? snapshot.warnings : [];
+    const hasCapture = !!snapshot?.captured || !!diagnostics;
+
+    els.captureReview.hidden = !hasCapture;
+    if (!hasCapture) {
+      els.reviewGrid.innerHTML = "";
+      els.warningList.hidden = true;
+      els.diagnosticsOutput.textContent = "";
+      return;
+    }
+
+    const items = [
+      ["Patient", confidence.patient || "Not found"],
+      ["Room", confidence.room || "Needs review"],
+      ["Type", confidence.type || "Needs review"],
+      ["Doctor", confidence.doctor || "Optional"]
+    ];
+    els.reviewGrid.innerHTML = items.map(([label, value]) => (
+      `<div class="reviewItem"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`
+    )).join("");
+
+    if (warnings.length) {
+      els.warningList.hidden = false;
+      els.warningList.innerHTML = warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("");
+    } else {
+      els.warningList.hidden = true;
+      els.warningList.innerHTML = "";
+    }
+
+    els.diagnosticsOutput.textContent = JSON.stringify(diagnostics || {}, null, 2);
   }
 
   function renderForm() {
@@ -183,6 +235,14 @@
 
   function normalizeSpaces(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function getErrorMessage(error) {
