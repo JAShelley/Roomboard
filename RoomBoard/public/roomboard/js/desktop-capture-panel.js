@@ -98,7 +98,6 @@
           <label><input id="desktopCaptureDoctorReady" type="checkbox"> Doctor ready</label>
         </div>
         <div class="desktopCaptureFooter">
-          <button data-action="capture" type="button">Capture</button>
           <button class="desktopCapturePrimary" data-action="send" type="button">Send</button>
         </div>
       </div>

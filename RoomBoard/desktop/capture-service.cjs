@@ -32,6 +32,7 @@ const HELPER_CONFIGS = {
 
 function createCaptureService(options = {}) {
   const captureHotkey = options.captureHotkey || DEFAULT_CAPTURE_HOTKEY;
+  const enableHotkey = options.enableHotkey === true;
   const desktopPath = typeof options.desktopPath === "function"
     ? options.desktopPath
     : (filename) => path.join(__dirname, filename);
@@ -56,6 +57,7 @@ function createCaptureService(options = {}) {
   const reviewWindowOptions = options.reviewWindowOptions || {};
   const quickSendWindowOptions = options.quickSendWindowOptions || {};
   const trayClickAction = options.trayClickAction || "capture";
+  const menuBarOnlyCaptureMessage = "Use the RoomBoard menu bar button to arm capture.";
 
   let overlayWindow = null;
   let overlayBounds = null;
@@ -97,7 +99,7 @@ function createCaptureService(options = {}) {
       armed: isArmed,
       helperAvailable: !!helperInfo.path,
       helperPlatform: helperInfo.config?.name || process.platform,
-      hotkey: captureHotkey,
+      hotkey: enableHotkey ? captureHotkey : "",
       message,
       ...detail
     };
@@ -309,7 +311,7 @@ function createCaptureService(options = {}) {
       return;
     }
 
-    startHoverCapture().then((result) => {
+    startHoverCapture({ source: "menu-bar" }).then((result) => {
       if (result && result.ok === false) {
         sendStatus(result.message || "Capture could not start.");
       }
@@ -617,7 +619,15 @@ function createCaptureService(options = {}) {
     )) || null;
   }
 
-  async function startCapture() {
+  function rejectNonMenuBarCapture(options) {
+    if (options?.source === "menu-bar") return null;
+    return { ok: false, message: menuBarOnlyCaptureMessage };
+  }
+
+  async function startCapture(options = {}) {
+    const rejected = rejectNonMenuBarCapture(options);
+    if (rejected) return rejected;
+
     if (isArmed) {
       return { ok: true, message: "Capture is already running." };
     }
@@ -681,7 +691,10 @@ function createCaptureService(options = {}) {
     }
   }
 
-  async function startHoverCapture() {
+  async function startHoverCapture(options = {}) {
+    const rejected = rejectNonMenuBarCapture(options);
+    if (rejected) return rejected;
+
     if (isArmed) {
       return { ok: true, message: "Capture is already armed." };
     }
@@ -907,9 +920,10 @@ function createCaptureService(options = {}) {
 
   function registerHotkey() {
     globalShortcut.unregister(captureHotkey);
+    if (!enableHotkey) return false;
     const registered = globalShortcut.register(captureHotkey, () => {
       if (isArmed) stopCapture("Capture cancelled.");
-      else startHoverCapture().catch((error) => sendStatus(String(error?.message || error || "Capture failed.")));
+      else startHoverCapture({ source: "menu-bar" }).catch((error) => sendStatus(String(error?.message || error || "Capture failed.")));
     });
 
     if (!registered) {
@@ -934,7 +948,7 @@ function createCaptureService(options = {}) {
       armed: isArmed,
       helperAvailable: !!getHelperPath(),
       helperPlatform: getHelperInfo().config?.name || process.platform,
-      hotkey: captureHotkey,
+      hotkey: enableHotkey ? captureHotkey : "",
       platform: process.platform
     }));
     ipcMain.handle("capture:quick-send-show", async () => {
@@ -947,13 +961,7 @@ function createCaptureService(options = {}) {
     ipcMain.handle("capture:quick-send-request", async (_event, request) => {
       const action = String(request?.action || "").trim();
       if (action === "capture") {
-        hideQuickSendWindow();
-        const result = await startHoverCapture();
-        if (result?.ok === false) {
-          showQuickSendWindow(result.message || "Capture could not start.");
-        }
-        setTimeout(() => refreshQuickSendSnapshot().catch(() => {}), 300);
-        return result;
+        return { ok: false, message: menuBarOnlyCaptureMessage };
       }
       if (action === "stop") {
         const result = stopCapture("Capture cancelled.");
@@ -1011,7 +1019,7 @@ function createCaptureService(options = {}) {
       armed: isArmed,
       helperAvailable: !!getHelperPath(),
       helperPlatform: getHelperInfo().config?.name || process.platform,
-      hotkey: captureHotkey,
+      hotkey: enableHotkey ? captureHotkey : "",
       platform: process.platform
     }),
     registerHotkey,

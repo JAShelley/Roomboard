@@ -38,7 +38,7 @@
     });
 
     els.refresh.addEventListener("click", refresh);
-    els.capture.addEventListener("click", capture);
+    if (els.capture) els.capture.addEventListener("click", capture);
     els.send.addEventListener("click", send);
     els.openRoomBoard.addEventListener("click", () => request("open-main", {}));
 
