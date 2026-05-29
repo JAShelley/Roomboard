@@ -12,6 +12,18 @@
   const PATIENT_NAME_RE = /^[^\w(]*(?:\([A-Z?]\s*,?\s*\d{0,3}\)\s*)?([A-Z][A-Za-z'`.-]+(?:\s+[A-Z][A-Za-z'`.-]+)*(?:\s+\([^)]+\))?)/;
   const PHONE_RE = /\b(?:\(?\d{3}\)?[-.\s]*)?\d{3}[-.\s]\d{4}\b|\(\d{3}\)/;
   const CONTACT_LINE_RE = /^(?:[HWC]\.?\s*)?(?:\(?\d{3}\)?[-.\s]*)?\d{3}[-.\s]\d{4}\b/i;
+  const ROOM_HINT_RE = /\b(?:exam\s+room|room|rm|treatment|tx|surgery|sx|tech|triage|isolation|drop\s*off|boarding|kennel|exam)\s*#?\s*([A-Za-z0-9-]+)?\b/i;
+  const TYPE_ALIAS_GROUPS = [
+    { aliases: ["euth", "euthanasia", "pts", "put to sleep", "quality of life", "qol"], labels: ["euthanasia consult", "euthanasia"] },
+    { aliases: ["sx", "surgery", "surgical", "spay", "neuter", "dental", "mass", "fracture", "procedure"], labels: ["sx consult", "surgery consult", "surgery", "consult"] },
+    { aliases: ["drop off", "dropoff", "sedated", "day admit", "admit"], labels: ["drop-off", "drop off"] },
+    { aliases: ["tech", "walk back", "walkback", "nail", "laser", "blood draw", "bw", "anal glands"], labels: ["tech appt", "tech"] },
+    { aliases: ["recheck", "follow up", "followup", "re chk", "rechk"], labels: ["exam", "recheck", "wellness"] },
+    { aliases: ["new puppy", "new kitten", "new pt", "new patient", "exam", "annual", "wellness", "consult"], labels: ["exam", "wellness"] },
+    { aliases: ["vaccine", "vacc", "vaccs", "booster", "rabies", "dhpp", "bordetella", "bord", "lepto", "lyme", "flu"], labels: ["vaccine", "vacc", "wellness"] },
+    { aliases: ["illness injury", "illness/injury", "injury illness", "illness", "injury", "sick", "vomit", "diarrhea", "limp", "pain", "cough", "itch", "ear"], labels: ["illness/injury", "illness injury", "sick", "exam"] },
+    { aliases: ["outside contagious", "outside contageous", "outside constagious", "outside", "contagious", "car", "isolation"], labels: ["outside contagious", "car isolation", "car - isolation"] }
+  ];
 
   const state = {
     boardData: null,
@@ -29,6 +41,7 @@
     injectStyles();
     injectPanel();
     bindCaptureEvents();
+    bindQuickSendHostEvents();
   }
 
   function injectPanel() {
@@ -134,6 +147,66 @@
     });
   }
 
+  function bindQuickSendHostEvents() {
+    if (typeof api.onQuickSendRequest !== "function" || typeof api.sendQuickSendResponse !== "function") return;
+    api.onQuickSendRequest(async (request) => {
+      const requestId = request?.requestId || "";
+      try {
+        const response = await handleQuickSendRequest(request);
+        api.sendQuickSendResponse({
+          requestId,
+          ok: true,
+          ...response
+        });
+      } catch (error) {
+        api.sendQuickSendResponse({
+          requestId,
+          ok: false,
+          error: getErrorMessage(error),
+          snapshot: buildQuickSendSnapshot({ statusMessage: getErrorMessage(error), statusKind: "error" })
+        });
+      }
+    });
+  }
+
+  async function handleQuickSendRequest(request) {
+    const action = String(request?.action || "").trim();
+    const payload = request?.payload || {};
+
+    if (action === "open") {
+      openPanel();
+      await ensureBoardData();
+      return { snapshot: buildQuickSendSnapshot({ statusMessage: "Ready." }) };
+    }
+
+    if (action === "snapshot" || action === "refresh") {
+      await ensureBoardData();
+      return { snapshot: buildQuickSendSnapshot({ statusMessage: state.captured ? "Review the fields, then send." : "Capture an appointment from the menu bar." }) };
+    }
+
+    if (action === "set-form") {
+      state.form = normalizeExternalForm(payload.form || {});
+      renderForm();
+      return { snapshot: buildQuickSendSnapshot({ statusMessage: "Ready." }) };
+    }
+
+    if (action === "send") {
+      await ensureBoardData();
+      state.form = normalizeExternalForm(payload.form || {});
+      renderForm();
+      const result = await sendAppointment({ closePanel: false, throwOnError: true });
+      return {
+        room: result?.room || null,
+        snapshot: buildQuickSendSnapshot({
+          statusMessage: result?.room?.patientName ? `${result.room.patientName} sent to ${result.room.name || "room"}.` : "Sent to RoomBoard.",
+          statusKind: "ok"
+        })
+      };
+    }
+
+    return { snapshot: buildQuickSendSnapshot({ statusMessage: "Ready." }) };
+  }
+
   async function onPanelClick(event) {
     const button = event.target?.closest?.("[data-action]");
     if (!button) return;
@@ -143,7 +216,7 @@
       return;
     }
     if (action === "capture") {
-      const result = await api.start();
+      const result = typeof api.startHover === "function" ? await api.startHover() : await api.start();
       if (result?.message) showStatus(result.message, result.ok ? "ok" : "error");
       return;
     }
@@ -156,7 +229,7 @@
     const parsed = parseCapturedText(payload);
     state.captured = { ...payload, parsed };
     state.form = null;
-    openPanel();
+    if (!payload?.quickSendPopoutOpen) openPanel();
     showStatus("Appointment captured. Loading rooms...", "ok");
     renderPreview(payload);
 
@@ -165,10 +238,12 @@
       state.form = buildInitialFormState(state.boardData, state.captured);
       renderForm();
       showStatus("Review the fields, then send.", "ok");
+      publishQuickSendSnapshot("Review the fields, then send.", "ok");
     } catch (error) {
       state.form = buildFallbackFormState(state.captured);
       renderForm();
       showStatus(getErrorMessage(error), "error");
+      publishQuickSendSnapshot(getErrorMessage(error), "error");
     }
   }
 
@@ -189,6 +264,47 @@
       els.previewImage.removeAttribute("src");
       els.preview.hidden = true;
     }
+  }
+
+  function publishQuickSendSnapshot(statusMessage, statusKind) {
+    if (typeof api.publishQuickSendSnapshot !== "function") return;
+    api.publishQuickSendSnapshot(buildQuickSendSnapshot({ statusMessage, statusKind }));
+  }
+
+  function buildQuickSendSnapshot(options = {}) {
+    const data = state.boardData || getActiveBoardData() || { rooms: [], colorLabels: [], doctors: [""], quickNotes: [""] };
+    const form = state.form || buildFallbackFormState(state.captured);
+    return {
+      statusMessage: options.statusMessage || (state.captured ? "Review the fields, then send." : "Capture an appointment from the menu bar."),
+      statusKind: options.statusKind || "",
+      preview: {
+        imageDataUrl: state.captured?.imageDataUrl || ""
+      },
+      form: { ...form },
+      rooms: (data.rooms || []).map((room) => ({
+        value: room.id,
+        label: formatRoomOption(room)
+      })),
+      colorLabels: (data.colorLabels || []).map((label) => ({
+        value: label.id,
+        label: label.title
+      })),
+      doctors: (data.doctors || [""]).map((doctor) => ({
+        value: doctor,
+        label: doctor || "No doctor"
+      })),
+      quickNotes: (data.quickNotes || [""]).map((note) => ({
+        value: note,
+        label: note || "No quick note"
+      })),
+      captured: state.captured ? {
+        method: state.captured.captureMethod || "",
+        hasImage: !!state.captured.imageDataUrl,
+        patientName: state.captured.parsed?.patientName || "",
+        roomHint: state.captured.parsed?.roomHint || "",
+        appointmentTime: state.captured.parsed?.appointmentTime || ""
+      } : null
+    };
   }
 
   async function ensureBoardData(forceRefresh) {
@@ -377,7 +493,10 @@
   function buildInitialFormState(boardData, captured) {
     const parsed = captured?.parsed || {};
     const rooms = Array.isArray(boardData.rooms) ? boardData.rooms : [];
-    const preferredRoom = rooms.find((room) => !room.patientName && !room.needsCleaning) || rooms.find((room) => !room.needsCleaning) || rooms[0];
+    const preferredRoom = findBestRoom(boardData, parsed)
+      || rooms.find((room) => !room.patientName && !room.needsCleaning)
+      || rooms.find((room) => !room.needsCleaning)
+      || rooms[0];
     return {
       roomId: preferredRoom?.id || "",
       patientName: parsed.patientName || "",
@@ -389,6 +508,26 @@
       roomReady: false,
       doctorReady: false
     };
+  }
+
+  function normalizeExternalForm(form) {
+    const fallback = state.form || buildFallbackFormState(state.captured);
+    const next = {
+      roomId: normalizeSpaces(form.roomId || fallback.roomId || ""),
+      patientName: normalizeSpaces(form.patientName || fallback.patientName || ""),
+      colorLabelId: normalizeSpaces(form.colorLabelId || fallback.colorLabelId || ""),
+      doctor: normalizeSpaces(form.doctor || fallback.doctor || ""),
+      tech: normalizeSpaces(form.tech || fallback.tech || ""),
+      quickNote: normalizeSpaces(form.quickNote || fallback.quickNote || ""),
+      notes: String(form.notes != null ? form.notes : (fallback.notes || "")).trim(),
+      roomReady: form.roomReady != null ? !!form.roomReady : !!fallback.roomReady,
+      doctorReady: form.doctorReady != null ? !!form.doctorReady : !!fallback.doctorReady
+    };
+
+    if (!next.colorLabelId && state.boardData) {
+      next.colorLabelId = state.boardData.settings?.defaultColorLabelId || state.boardData.colorLabels?.[0]?.id || "";
+    }
+    return next;
   }
 
   function buildFallbackFormState(captured) {
@@ -481,18 +620,21 @@
     renderForm();
   }
 
-  async function sendAppointment() {
+  async function sendAppointment(options = {}) {
     syncFormFromFields();
     if (!state.form?.roomId) {
       showStatus("Choose a room first.", "error");
+      if (options.throwOnError) throw new Error("Choose a room first.");
       return;
     }
     if (!normalizeSpaces(state.form.patientName)) {
       showStatus("Patient name is required.", "error");
+      if (options.throwOnError) throw new Error("Patient name is required.");
       return;
     }
     if (!normalizeSpaces(state.form.colorLabelId)) {
       showStatus("Choose an appointment type.", "error");
+      if (options.throwOnError) throw new Error("Choose an appointment type.");
       return;
     }
 
@@ -501,11 +643,15 @@
       const result = await sendViaRoomBoardSync();
       const room = result.room;
       showToast(`${room.patientName} sent to ${room.name || "room"}.`);
-      closePanel();
+      if (options.closePanel !== false) closePanel();
       state.boardData = getActiveBoardData();
       if (!state.boardData) refreshMainBoard();
+      publishQuickSendSnapshot(`${room.patientName} sent to ${room.name || "room"}.`, "ok");
+      return result;
     } catch (error) {
       showStatus(getErrorMessage(error), "error");
+      publishQuickSendSnapshot(getErrorMessage(error), "error");
+      if (options.throwOnError) throw error;
     }
   }
 
@@ -628,6 +774,13 @@
 
   function parseCapturedText(payload) {
     const rawText = String(payload?.text || payload?.name || "").trim();
+    const sourceText = normalizeSpaces([
+      payload?.windowTitle,
+      payload?.processName,
+      payload?.controlType,
+      payload?.automationId,
+      payload?.className
+    ].filter(Boolean).join(" "));
     const lines = rawText
       .split(/\r?\n|\s+\|\s+/)
       .map((line) => normalizeCalendarLine(line))
@@ -638,21 +791,28 @@
       || lines.find((line) => SINGLE_TIME_RE.test(line))?.match(SINGLE_TIME_RE)?.[0]
       || "";
 
-    const doctor = lines.find((line) => DOCTOR_RE.test(line)) || "";
+    const doctorLine = lines.find((line) => DOCTOR_RE.test(line)) || "";
+    const doctor = extractDoctorName(doctorLine);
     const patientLineIndex = findPatientLineIndex(lines, appointmentTime);
     const patientName = patientLineIndex >= 0 ? extractCalendarPatientName(lines[patientLineIndex]) : "";
     const reasonLines = lines.filter((line, index) => {
       if (!line) return false;
-      if (index === patientLineIndex || line === patientName || line === doctor || line === appointmentTime) return false;
+      if (index === patientLineIndex || line === patientName || line === doctorLine || line === doctor || line === appointmentTime) return false;
       if (TIME_RANGE_RE.test(line) || SINGLE_TIME_RE.test(line)) return false;
       return isLikelyAppointmentReasonLine(line);
     });
+    const roomHint = extractRoomHint([...lines, sourceText]);
+    const columnHeader = extractColumnHeader([...lines, sourceText], roomHint);
 
     return {
       patientName,
       reason: reasonLines.slice(0, 3).join(", "),
       doctor,
       appointmentTime,
+      typeText: reasonLines[0] || "",
+      descriptionText: reasonLines.slice(1).join(", "),
+      roomHint,
+      columnHeader,
       rawText
     };
   }
@@ -698,6 +858,34 @@
     return normalizeSpaces(match?.[1] || cleaned).replace(/[,:;]+$/, "").trim();
   }
 
+  function extractDoctorName(line) {
+    return normalizeSpaces(line)
+      .replace(/^(?:appointment\s+provider|appointment\s+doctor|provider|doctor|dr\.?|dvm|d\.v\.m\.|vet)\s*:?\s*/i, "")
+      .replace(/\b(?:appointment\s+provider|appointment\s+doctor|provider|doctor)\b\s*:?\s*/ig, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function extractRoomHint(values) {
+    const lines = asArray(values).map((value) => normalizeSpaces(value)).filter(Boolean);
+    for (const line of lines) {
+      const match = line.match(ROOM_HINT_RE);
+      if (!match) continue;
+      return normalizeSpaces(String(match[0] || "").replace(/[:#]+$/g, ""));
+    }
+    return "";
+  }
+
+  function extractColumnHeader(lines, roomHint) {
+    if (roomHint) return roomHint;
+    const candidates = asArray(lines)
+      .map((line) => normalizeSpaces(line))
+      .filter(Boolean)
+      .filter((line) => line.length <= 42)
+      .filter((line) => /^(?:tech|surgery|sx|drop\s*off|treatment|triage|isolation|boarding|kennel|exam(?:\s+room)?\s*\d*)$/i.test(line));
+    return candidates[0] || "";
+  }
+
   function isLikelyAppointmentReasonLine(line) {
     const text = normalizeSpaces(line);
     if (!text || /^lunch$/i.test(text)) return false;
@@ -714,24 +902,207 @@
     const parts = [];
     if (parsed.appointmentTime) parts.push(`Time: ${parsed.appointmentTime}`);
     if (parsed.reason) parts.push(`Reason: ${parsed.reason}`);
+    if (parsed.roomHint) parts.push(`Schedule room: ${parsed.roomHint}`);
     if (payload?.windowTitle) parts.push(`Source: ${payload.windowTitle}`);
     if (parsed.rawText) parts.push(`Captured text:\n${parsed.rawText}`);
     return parts.join("\n\n");
   }
 
+  function findBestRoom(boardData, parsed) {
+    const rooms = Array.isArray(boardData?.rooms) ? boardData.rooms : [];
+    if (!rooms.length) return null;
+
+    const hintText = normalizeSpaces([
+      parsed?.roomHint,
+      parsed?.columnHeader,
+      parsed?.rawText
+    ].filter(Boolean).join(" "));
+    const hints = buildRoomHintCandidates(hintText);
+    if (!hints.length) return null;
+
+    let bestRoom = null;
+    let bestScore = 0;
+    for (const room of rooms) {
+      const score = scoreRoomMatch(room, hints);
+      if (score > bestScore) {
+        bestScore = score;
+        bestRoom = room;
+      }
+    }
+
+    return bestScore >= 58 ? bestRoom : null;
+  }
+
+  function buildRoomHintCandidates(text) {
+    const normalized = normalizeSpaces(text);
+    if (!normalized) return [];
+    const candidates = new Set();
+    const hint = extractRoomHint([normalized]);
+    if (hint) candidates.add(hint);
+
+    normalized.split(/\r?\n|[,|/]+/).forEach((part) => {
+      const value = normalizeSpaces(part);
+      if (!value || value.length > 80) return;
+      if (ROOM_HINT_RE.test(value) || /^(?:tech|surgery|sx|treatment|triage|isolation|boarding|kennel)$/i.test(value)) {
+        candidates.add(value);
+      }
+    });
+
+    return Array.from(candidates);
+  }
+
+  function scoreRoomMatch(room, hints) {
+    const roomName = normalizeSpaces(room?.name || room?.id || "");
+    const roomKey = normalizeRoomForMatch(roomName);
+    if (!roomKey) return 0;
+
+    const roomNumber = extractFirstNumber(roomName);
+    let score = 0;
+    for (const hint of hints) {
+      const hintKey = normalizeRoomForMatch(hint);
+      if (!hintKey) continue;
+      if (roomKey === hintKey) score = Math.max(score, 100);
+      else if (roomKey.includes(hintKey) || hintKey.includes(roomKey)) score = Math.max(score, 84);
+
+      const hintNumber = extractFirstNumber(hint);
+      if (roomNumber && hintNumber && roomNumber === hintNumber) score = Math.max(score, 78);
+
+      const overlap = countTokenOverlap(roomKey.split(" "), hintKey.split(" "));
+      if (overlap) score = Math.max(score, 42 + overlap * 16);
+    }
+
+    if (!room?.patientName && !room?.needsCleaning) score += 10;
+    if (room?.patientName) score -= 18;
+    if (room?.needsCleaning) score -= 80;
+    return score;
+  }
+
   function findBestColorLabelId(boardData, parsed) {
     const labels = boardData?.colorLabels || [];
-    const haystack = normalizeLoose(`${parsed.reason || ""} ${parsed.rawText || ""}`);
+    const haystack = normalizeLoose(`${parsed.typeText || ""} ${parsed.reason || ""} ${parsed.descriptionText || ""} ${parsed.columnHeader || ""} ${parsed.rawText || ""}`);
     if (!haystack) return boardData?.settings?.defaultColorLabelId || labels[0]?.id || "";
+
+    const alias = findAliasColorLabel(labels, haystack);
+    if (alias) return alias.id;
+
     const exact = labels.find((label) => haystack.includes(normalizeLoose(label.title)));
-    return exact?.id || boardData?.settings?.defaultColorLabelId || labels[0]?.id || "";
+    if (exact) return exact.id;
+
+    const scored = findBestScoredColorLabel(labels, haystack);
+    return scored?.id || boardData?.settings?.defaultColorLabelId || labels[0]?.id || "";
   }
 
   function findBestDoctor(boardData, parsed) {
     const doctors = boardData?.doctors || [];
-    const doctorText = normalizeLoose(parsed.doctor || parsed.rawText || "");
-    const match = doctors.find((doctor) => doctor && doctorText.includes(normalizeLoose(doctor)));
-    return match || "";
+    const guesses = [
+      parsed?.doctor,
+      extractDoctorName(parsed?.rawText || ""),
+      parsed?.columnHeader
+    ].map((value) => normalizeSpaces(value)).filter(Boolean);
+    let bestDoctor = "";
+    let bestScore = 0;
+
+    for (const guess of guesses) {
+      const guessKey = normalizeDoctorForMatch(guess);
+      const guessLast = getDoctorLastToken(guessKey);
+      if (!guessKey) continue;
+
+      doctors.forEach((doctor) => {
+        const doctorName = normalizeSpaces(doctor);
+        const doctorKey = normalizeDoctorForMatch(doctorName);
+        if (!doctorKey) return;
+        let score = 0;
+        if (doctorKey === guessKey) score = 100;
+        else if (doctorKey.includes(guessKey) || guessKey.includes(doctorKey)) score = 90;
+        else if (guessLast && doctorKey.split(" ").includes(guessLast)) score = 74;
+        if (score > bestScore) {
+          bestScore = score;
+          bestDoctor = doctorName;
+        }
+      });
+    }
+
+    return bestDoctor;
+  }
+
+  function findAliasColorLabel(labels, haystack) {
+    for (const group of TYPE_ALIAS_GROUPS) {
+      if (!group.aliases.some((alias) => haystack.includes(normalizeLoose(alias)))) continue;
+      const match = findColorLabelByTerms(labels, group.labels);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  function findColorLabelByTerms(labels, terms) {
+    for (const term of terms) {
+      const termKey = normalizeLoose(term);
+      const match = labels.find((label) => normalizeLoose(label.title).includes(termKey));
+      if (match) return match;
+    }
+    return null;
+  }
+
+  function findBestScoredColorLabel(labels, searchText) {
+    const searchTokens = getSignificantTokens(searchText);
+    if (!searchTokens.length) return null;
+    let best = null;
+    let bestScore = 0;
+    labels.forEach((label) => {
+      const labelText = normalizeLoose(label.title);
+      const labelTokens = getSignificantTokens(labelText);
+      if (!labelTokens.length) return;
+      let score = 0;
+      if (labelText === searchText) score += 500;
+      if (searchText.includes(labelText)) score += 260;
+      score += countTokenOverlap(labelTokens, searchTokens) * 90;
+      if (score > bestScore) {
+        bestScore = score;
+        best = label;
+      }
+    });
+    return bestScore >= 160 ? best : null;
+  }
+
+  function getSignificantTokens(value) {
+    return normalizeLoose(value)
+      .split(" ")
+      .filter((token) => token.length > 1 && !["the", "and", "for", "with", "appt", "appointment", "visit", "patient"].includes(token));
+  }
+
+  function countTokenOverlap(values, candidates) {
+    if (!Array.isArray(values) || !Array.isArray(candidates)) return 0;
+    const set = new Set(candidates);
+    return values.reduce((count, value) => count + (set.has(value) ? 1 : 0), 0);
+  }
+
+  function normalizeRoomForMatch(value) {
+    return normalizeLoose(value)
+      .replace(/\bexam room\b/g, "room")
+      .replace(/\brm\b/g, "room")
+      .replace(/\btx\b/g, "treatment")
+      .replace(/\bsx\b/g, "surgery")
+      .trim();
+  }
+
+  function normalizeDoctorForMatch(value) {
+    return normalizeLoose(value)
+      .replace(/\bdr\b/g, "")
+      .replace(/\bdoctor\b/g, "")
+      .replace(/\bdvm\b/g, "")
+      .replace(/\bprovider\b/g, "")
+      .replace(/\bvet\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function getDoctorLastToken(value) {
+    const tokens = normalizeDoctorForMatch(value).split(" ").filter(Boolean);
+    return tokens.length ? tokens[tokens.length - 1] : "";
+  }
+
+  function extractFirstNumber(value) {
+    return normalizeSpaces(value).match(/\d+/)?.[0] || "";
   }
 
   function formatRoomOption(room) {

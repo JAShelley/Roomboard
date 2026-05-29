@@ -54,6 +54,9 @@ function createCaptureService(options = {}) {
     || process.env.ROOMBOARD_CAPTURE_OPEN_ON_CAPTURE === "1";
   const useReviewWindow = options.useReviewWindow === true;
   const reviewWindowOptions = options.reviewWindowOptions || {};
+  const quickSendLabel = options.quickSendLabel || "Quick Send";
+  const quickSendWindowOptions = options.quickSendWindowOptions || {};
+  const trayClickAction = options.trayClickAction || "capture";
 
   let overlayWindow = null;
   let overlayBounds = null;
@@ -67,6 +70,9 @@ function createCaptureService(options = {}) {
   let reviewWindow = null;
   let reviewWindowShouldOpenWhenReady = false;
   let pendingReviewStatusMessage = null;
+  let quickSendWindow = null;
+  let quickSendRequestSeq = 0;
+  const pendingQuickSendRequests = new Map();
   let ipcRegistered = false;
 
   function getReviewTargetWindow() {
@@ -80,16 +86,24 @@ function createCaptureService(options = {}) {
     }
   }
 
+  function sendToQuickSend(channel, payload) {
+    if (quickSendWindow && !quickSendWindow.isDestroyed()) {
+      quickSendWindow.webContents.send(channel, payload);
+    }
+  }
+
   function sendStatus(message, detail = {}) {
     const helperInfo = getHelperInfo();
-    sendToTarget("capture:status", {
+    const payload = {
       armed: isArmed,
       helperAvailable: !!helperInfo.path,
       helperPlatform: helperInfo.config?.name || process.platform,
       hotkey: captureHotkey,
       message,
       ...detail
-    });
+    };
+    sendToTarget("capture:status", payload);
+    sendToQuickSend("capture:status", payload);
     updateTray();
   }
 
@@ -130,11 +144,11 @@ function createCaptureService(options = {}) {
       tray.setIgnoreDoubleClickEvents(true);
       tray.on("click", () => {
         if (Date.now() - lastTrayRightClickAt < 350) return;
-        toggleCaptureFromTray();
+        handleTrayPrimaryClick();
       });
     } else {
       tray.on("click", () => {
-        toggleCaptureFromTray();
+        handleTrayPrimaryClick();
       });
     }
     tray.on("right-click", () => {
@@ -147,6 +161,10 @@ function createCaptureService(options = {}) {
 
   function buildTrayMenu() {
     const menuItems = [
+      {
+        label: quickSendLabel,
+        click: () => openQuickSendSurface(isArmed ? "Capture active." : "Ready.")
+      },
       {
         label: openLabel,
         click: () => openReviewSurface(isArmed ? "Capture active." : "Ready.")
@@ -161,7 +179,7 @@ function createCaptureService(options = {}) {
       menuItems.push({
         label: "Review Last Capture",
         click: () => {
-          openReviewSurface("Review captured appointment.");
+          openQuickSendSurface("Review captured appointment.");
           sendCapturedToTarget(lastCapturedPayload);
         }
       });
@@ -176,6 +194,14 @@ function createCaptureService(options = {}) {
     );
 
     return Menu.buildFromTemplate(menuItems);
+  }
+
+  function handleTrayPrimaryClick() {
+    if (trayClickAction === "quick-send") {
+      openQuickSendSurface(isArmed ? "Capture active." : "Ready.");
+      return;
+    }
+    toggleCaptureFromTray();
   }
 
   function updateTray() {
@@ -222,13 +248,69 @@ function createCaptureService(options = {}) {
     reviewWindow.setSkipTaskbar(true);
   }
 
+  function openQuickSendSurface(statusMessage) {
+    showQuickSendWindow(statusMessage);
+  }
+
+  function showQuickSendWindow(statusMessage) {
+    if (!quickSendWindow || quickSendWindow.isDestroyed()) {
+      createQuickSendWindow({ showOnReady: true, statusMessage });
+      return;
+    }
+
+    positionQuickSendWindow();
+    if (quickSendWindow.isMinimized()) quickSendWindow.restore();
+    quickSendWindow.setSkipTaskbar(true);
+    quickSendWindow.show();
+    quickSendWindow.focus();
+    if (IS_MAC && typeof app.focus === "function") {
+      app.focus({ steal: true });
+    }
+    sendStatus(statusMessage || (isArmed ? "Capture active." : "Ready."));
+    refreshQuickSendSnapshot().catch(() => {});
+  }
+
+  function hideQuickSendWindow() {
+    if (!quickSendWindow || quickSendWindow.isDestroyed()) return;
+    quickSendWindow.hide();
+    quickSendWindow.setSkipTaskbar(true);
+  }
+
+  function isQuickSendWindowVisible() {
+    return !!(quickSendWindow && !quickSendWindow.isDestroyed() && quickSendWindow.isVisible());
+  }
+
+  function positionQuickSendWindow() {
+    if (!quickSendWindow || quickSendWindow.isDestroyed()) return;
+
+    const bounds = quickSendWindow.getBounds();
+    const trayBounds = tray && typeof tray.getBounds === "function" ? tray.getBounds() : null;
+    const anchorPoint = trayBounds
+      ? { x: trayBounds.x + Math.round(trayBounds.width / 2), y: trayBounds.y + Math.round(trayBounds.height / 2) }
+      : screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(anchorPoint);
+    const area = display.workArea || display.bounds;
+    const margin = 8;
+    const targetX = trayBounds
+      ? trayBounds.x + Math.round(trayBounds.width / 2) - Math.round(bounds.width / 2)
+      : anchorPoint.x - Math.round(bounds.width / 2);
+    const isMenuBarAnchor = trayBounds && trayBounds.y <= area.y + 40;
+    const targetY = isMenuBarAnchor
+      ? trayBounds.y + trayBounds.height + margin
+      : anchorPoint.y + margin;
+
+    const x = Math.max(area.x + margin, Math.min(targetX, area.x + area.width - bounds.width - margin));
+    const y = Math.max(area.y + margin, Math.min(targetY, area.y + area.height - bounds.height - margin));
+    quickSendWindow.setBounds({ x, y, width: bounds.width, height: bounds.height });
+  }
+
   function toggleCaptureFromTray() {
     if (isArmed) {
       stopCapture("Capture cancelled.");
       return;
     }
 
-    startCapture().then((result) => {
+    startHoverCapture().then((result) => {
       if (result && result.ok === false) {
         sendStatus(result.message || "Capture could not start.");
       }
@@ -354,8 +436,14 @@ function createCaptureService(options = {}) {
   }
 
   function sendCapturedToTarget(captured) {
-    sendToTarget("capture:captured", captured);
-    setTimeout(() => sendToTarget("capture:captured", captured), 150);
+    const appCaptured = {
+      ...captured,
+      quickSendPopoutOpen: isQuickSendWindowVisible()
+    };
+    sendToTarget("capture:captured", appCaptured);
+    sendToQuickSend("capture:captured", captured);
+    setTimeout(() => sendToTarget("capture:captured", appCaptured), 150);
+    setTimeout(() => sendToQuickSend("capture:captured", captured), 150);
   }
 
   function emitCaptured(payload) {
@@ -363,7 +451,7 @@ function createCaptureService(options = {}) {
     lastCapturedPayload = captured;
     stopCapture(captured.text || captured.name ? "Captured appointment text." : "Captured appointment preview.");
     if (shouldOpenReview(captured)) {
-      openReviewSurface("Review captured appointment.");
+      openQuickSendSurface("Review captured appointment.");
     }
     sendCapturedToTarget(captured);
   }
@@ -703,11 +791,121 @@ function createCaptureService(options = {}) {
     reviewWindow.loadFile(desktopPath("capture-ui.html"));
   }
 
+  function createQuickSendWindow(windowOptions = {}) {
+    const showOnReady = windowOptions.showOnReady === true;
+    quickSendWindow = new BrowserWindow({
+      autoHideMenuBar: true,
+      backgroundColor: "#f8fafc",
+      frame: true,
+      height: quickSendWindowOptions.height || 700,
+      minHeight: quickSendWindowOptions.minHeight || 560,
+      minWidth: quickSendWindowOptions.minWidth || 380,
+      resizable: true,
+      show: false,
+      skipTaskbar: true,
+      title: quickSendWindowOptions.title || "RoomBoard Quick Send",
+      width: quickSendWindowOptions.width || 430,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: desktopPath("capture-preload.cjs"),
+        sandbox: false
+      }
+    });
+
+    quickSendWindow.once("ready-to-show", () => {
+      if (!quickSendWindow || quickSendWindow.isDestroyed()) return;
+      positionQuickSendWindow();
+      if (showOnReady) {
+        quickSendWindow.show();
+        quickSendWindow.focus();
+        if (IS_MAC && typeof app.focus === "function") {
+          app.focus({ steal: true });
+        }
+      } else {
+        hideQuickSendWindow();
+      }
+      sendStatus(windowOptions.statusMessage || (isArmed ? "Capture active." : "Ready."));
+      refreshQuickSendSnapshot().catch(() => {});
+    });
+
+    quickSendWindow.on("close", (event) => {
+      if (options.isQuitting && options.isQuitting()) return;
+      event.preventDefault();
+      hideQuickSendWindow();
+    });
+
+    quickSendWindow.on("closed", () => {
+      quickSendWindow = null;
+    });
+
+    quickSendWindow.loadFile(desktopPath("capture-popout.html"));
+  }
+
+  async function requestQuickSendHost(action, payload = {}) {
+    let targetWindow = getTargetWindow();
+    if (!targetWindow || targetWindow.isDestroyed()) {
+      await Promise.resolve(openTargetWindow("Ready."));
+      await delay(300);
+      targetWindow = getTargetWindow();
+    }
+
+    if (!targetWindow || targetWindow.isDestroyed()) {
+      throw new Error("Open RoomBoard before using Quick Send.");
+    }
+
+    const requestId = `quick-send-${Date.now()}-${++quickSendRequestSeq}`;
+    const request = { requestId, action, payload };
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pendingQuickSendRequests.delete(requestId);
+        reject(new Error("RoomBoard Quick Send is not ready yet."));
+      }, 5000);
+      pendingQuickSendRequests.set(requestId, { resolve, reject, timeout });
+      targetWindow.webContents.send("capture:quick-send-request", request);
+    });
+  }
+
+  async function refreshQuickSendSnapshot() {
+    try {
+      const response = await requestQuickSendHost("snapshot", {});
+      const snapshot = response?.snapshot || response;
+      if (snapshot) sendToQuickSend("capture:quick-send-snapshot", snapshot);
+      return snapshot;
+    } catch (error) {
+      const message = String(error?.message || error || "RoomBoard Quick Send is not ready yet.");
+      const snapshot = {
+        statusMessage: message,
+        statusKind: "error",
+        form: {},
+        rooms: [],
+        colorLabels: [],
+        doctors: [{ value: "", label: "No doctor" }],
+        quickNotes: [{ value: "", label: "No quick note" }]
+      };
+      sendToQuickSend("capture:quick-send-snapshot", snapshot);
+      return snapshot;
+    }
+  }
+
+  function resolveQuickSendResponse(response) {
+    const requestId = response?.requestId;
+    if (!requestId || !pendingQuickSendRequests.has(requestId)) return;
+    const pending = pendingQuickSendRequests.get(requestId);
+    pendingQuickSendRequests.delete(requestId);
+    clearTimeout(pending.timeout);
+    if (response.ok === false) {
+      pending.reject(new Error(response.error || "RoomBoard Quick Send failed."));
+      return;
+    }
+    pending.resolve(response);
+  }
+
   function registerHotkey() {
     globalShortcut.unregister(captureHotkey);
     const registered = globalShortcut.register(captureHotkey, () => {
       if (isArmed) stopCapture("Capture cancelled.");
-      else startCapture().catch((error) => sendStatus(String(error?.message || error || "Capture failed.")));
+      else startHoverCapture().catch((error) => sendStatus(String(error?.message || error || "Capture failed.")));
     });
 
     if (!registered) {
@@ -720,6 +918,7 @@ function createCaptureService(options = {}) {
     if (ipcRegistered) return;
     ipcRegistered = true;
     ipcMain.handle("capture:start", () => startCapture());
+    ipcMain.handle("capture:start-hover", () => startHoverCapture());
     ipcMain.handle("capture:stop", () => stopCapture("Capture cancelled."));
     ipcMain.handle("capture:read-clipboard-text", () => clipboard.readText() || "");
     ipcMain.handle("capture:copy-text", (_event, text) => {
@@ -734,6 +933,46 @@ function createCaptureService(options = {}) {
       hotkey: captureHotkey,
       platform: process.platform
     }));
+    ipcMain.handle("capture:quick-send-show", async () => {
+      openQuickSendSurface(isArmed ? "Capture active." : "Ready.");
+      return { ok: true };
+    });
+    ipcMain.handle("capture:quick-send-ready", async () => {
+      return await refreshQuickSendSnapshot();
+    });
+    ipcMain.handle("capture:quick-send-request", async (_event, request) => {
+      const action = String(request?.action || "").trim();
+      if (action === "capture") {
+        hideQuickSendWindow();
+        const result = await startHoverCapture();
+        if (result?.ok === false) {
+          showQuickSendWindow(result.message || "Capture could not start.");
+        }
+        setTimeout(() => refreshQuickSendSnapshot().catch(() => {}), 300);
+        return result;
+      }
+      if (action === "stop") {
+        const result = stopCapture("Capture cancelled.");
+        setTimeout(() => refreshQuickSendSnapshot().catch(() => {}), 50);
+        return result;
+      }
+      if (action === "refresh" || action === "snapshot") {
+        return await refreshQuickSendSnapshot();
+      }
+      if (action === "open-main") {
+        await Promise.resolve(openTargetWindow("Ready."));
+        return { ok: true };
+      }
+      const response = await requestQuickSendHost(action, request?.payload || {});
+      if (response?.snapshot) sendToQuickSend("capture:quick-send-snapshot", response.snapshot);
+      return response;
+    });
+    ipcMain.on("capture:quick-send-response", (_event, response) => {
+      resolveQuickSendResponse(response);
+    });
+    ipcMain.on("capture:quick-send-snapshot", (_event, snapshot) => {
+      sendToQuickSend("capture:quick-send-snapshot", snapshot);
+    });
   }
 
   function destroy() {
@@ -747,10 +986,20 @@ function createCaptureService(options = {}) {
       reviewWindow.destroy();
       reviewWindow = null;
     }
+    if (quickSendWindow && !quickSendWindow.isDestroyed()) {
+      quickSendWindow.destroy();
+      quickSendWindow = null;
+    }
+    pendingQuickSendRequests.forEach((pending) => {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error("RoomBoard is closing."));
+    });
+    pendingQuickSendRequests.clear();
   }
 
   return {
     createReviewWindow,
+    createQuickSendWindow,
     createTray,
     destroy,
     getLastCaptured: () => lastCapturedPayload,

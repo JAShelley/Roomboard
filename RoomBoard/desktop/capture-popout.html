@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RoomBoard Quick Send</title>
+  <link rel="stylesheet" href="./capture-popout.css">
+</head>
+<body>
+  <main class="quickSendShell">
+    <header class="quickSendHeader">
+      <div>
+        <div class="quickSendEyebrow">RoomBoard</div>
+        <h1>Quick Send</h1>
+      </div>
+      <button class="iconButton" id="refreshBtn" type="button" title="Refresh" aria-label="Refresh">↻</button>
+    </header>
+
+    <div class="statusLine" id="statusLine">Loading RoomBoard...</div>
+
+    <div class="preview" id="preview" hidden>
+      <img alt="Captured appointment preview" id="previewImage">
+    </div>
+
+    <section class="formGrid" aria-label="Captured appointment">
+      <label class="field fieldFull">
+        <span>Room</span>
+        <select id="roomSelect"></select>
+      </label>
+      <label class="field fieldFull">
+        <span>Patient</span>
+        <input id="patientInput" type="text" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Type</span>
+        <select id="typeSelect"></select>
+      </label>
+      <label class="field">
+        <span>Doctor</span>
+        <select id="doctorSelect"></select>
+      </label>
+      <label class="field">
+        <span>Tech</span>
+        <input id="techInput" type="text" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Quick note</span>
+        <select id="quickNoteSelect"></select>
+      </label>
+      <label class="field fieldFull">
+        <span>Notes</span>
+        <textarea id="notesInput" rows="4"></textarea>
+      </label>
+    </section>
+
+    <div class="checkRow">
+      <label><input id="roomReadyInput" type="checkbox"> Room ready</label>
+      <label><input id="doctorReadyInput" type="checkbox"> Doctor ready</label>
+    </div>
+
+    <footer class="footerBar">
+      <button id="openRoomBoardBtn" type="button">Open RoomBoard</button>
+      <button id="captureBtn" type="button">Capture</button>
+      <button class="primary" id="sendBtn" type="button">Send</button>
+    </footer>
+  </main>
+  <script src="./capture-popout.js"></script>
+</body>
+</html>

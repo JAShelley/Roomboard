@@ -17,6 +17,47 @@ struct VisualCapture {
     let imageDataUrl: String?
 }
 
+struct RGBColor {
+    let red: Double
+    let green: Double
+    let blue: Double
+
+    var brightness: Double {
+        max(red, max(green, blue))
+    }
+
+    var saturation: Double {
+        let high = brightness
+        let low = min(red, min(green, blue))
+        guard high > 0 else { return 0 }
+        return (high - low) / high
+    }
+
+    var hue: Double {
+        let high = brightness
+        let low = min(red, min(green, blue))
+        let delta = high - low
+        guard delta > 0 else { return 0 }
+        var value: Double
+        if high == red {
+            value = ((green - blue) / delta).truncatingRemainder(dividingBy: 6)
+        } else if high == green {
+            value = ((blue - red) / delta) + 2
+        } else {
+            value = ((red - green) / delta) + 4
+        }
+        value *= 60
+        if value < 0 { value += 360 }
+        return value
+    }
+}
+
+struct ColorSample {
+    let x: Int
+    let y: Int
+    let color: RGBColor
+}
+
 struct CaptureEvent: Codable {
     let type: String
     let x: Int
@@ -109,14 +150,14 @@ struct RoomBoardCaptureHelper {
         let text = candidate.map(buildText) ?? ""
         let accessibilityBounds = candidate.flatMap(readBounds)
         let visualCapture = captureScreenPreview(point: point, includeImage: type == "capture")
-        let bounds = accessibilityBounds ?? visualCapture?.bounds
+        let bounds = chooseBestBounds(accessibilityBounds, visualCapture?.bounds)
         let appInfo = candidate.map(readAppInfo) ?? ("", "")
-        let captureMethod = text.isEmpty && visualCapture?.imageDataUrl != nil
-            ? "mac-screen-preview"
+        let captureMethod = visualCapture?.bounds != nil && shouldPreferVisualBounds(accessibilityBounds, visualCapture?.bounds)
+            ? "mac-visual-block"
             : "mac-accessibility"
         let message = text.isEmpty
-            ? visualCapture?.imageDataUrl != nil
-                ? "Captured screen preview. Fill any missing fields from the preview."
+            ? visualCapture?.bounds != nil
+                ? "Captured appointment block image. Fill any missing fields from the preview."
                 : "No readable appointment text under cursor. If this scheduler is image-based, allow Screen Recording for RoomBoard Capture or use clipboard text."
             : nil
 
@@ -140,6 +181,10 @@ struct RoomBoardCaptureHelper {
     }
 
     private static func captureScreenPreview(point: CGPoint, includeImage: Bool) -> VisualCapture? {
+        if let visualBlock = detectVisualAppointmentBlock(point: point, includeImage: includeImage) {
+            return visualBlock
+        }
+
         guard let displayBounds = displayBounds(containing: point) else { return nil }
 
         let cropWidth = min(520.0, max(1.0, displayBounds.width))
@@ -163,6 +208,246 @@ struct RoomBoardCaptureHelper {
         }
 
         return VisualCapture(bounds: bounds, imageDataUrl: "data:image/png;base64,\(data.base64EncodedString())")
+    }
+
+    private static func chooseBestBounds(_ accessibilityBounds: Bounds?, _ visualBounds: Bounds?) -> Bounds? {
+        if let visualBounds, shouldPreferVisualBounds(accessibilityBounds, visualBounds) {
+            return visualBounds
+        }
+        return accessibilityBounds ?? visualBounds
+    }
+
+    private static func shouldPreferVisualBounds(_ accessibilityBounds: Bounds?, _ visualBounds: Bounds?) -> Bool {
+        guard let visualBounds else { return false }
+        guard let accessibilityBounds else { return true }
+        let accessibilityArea = accessibilityBounds.width * accessibilityBounds.height
+        let visualArea = visualBounds.width * visualBounds.height
+        if accessibilityArea <= 0 || visualArea <= 0 { return true }
+        if accessibilityArea > visualArea * 2.5 { return true }
+        if accessibilityBounds.width > 900 || accessibilityBounds.height > 420 { return true }
+        return false
+    }
+
+    private static func detectVisualAppointmentBlock(point: CGPoint, includeImage: Bool) -> VisualCapture? {
+        guard let displayBounds = displayBounds(containing: point) else { return nil }
+
+        let captureWidth = min(920.0, max(1.0, displayBounds.width))
+        let captureHeight = min(700.0, max(1.0, displayBounds.height))
+        let left = clamp(point.x - captureWidth / 2, displayBounds.minX, displayBounds.maxX - captureWidth)
+        let top = clamp(point.y - captureHeight / 2, displayBounds.minY, displayBounds.maxY - captureHeight)
+        let cropRect = CGRect(x: left, y: top, width: captureWidth, height: captureHeight)
+
+        guard let image = CGWindowListCreateImage(cropRect, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution, .nominalResolution]) else {
+            return nil
+        }
+
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        guard bitmap.pixelsWide > 0, bitmap.pixelsHigh > 0 else { return nil }
+
+        let scaleX = CGFloat(bitmap.pixelsWide) / max(1.0, captureWidth)
+        let scaleY = CGFloat(bitmap.pixelsHigh) / max(1.0, captureHeight)
+        let localX = Int(((point.x - left) * scaleX).rounded())
+        let localY = Int(((point.y - top) * scaleY).rounded())
+        guard isInsideBitmap(bitmap, localX, localY) else { return nil }
+
+        guard let sample = findNearbyAppointmentColor(bitmap, localX, localY) else { return nil }
+
+        let roughLeft = findHorizontalEdge(bitmap, sample.x, sample.y, sample.color, -1)
+        let roughRight = findHorizontalEdge(bitmap, sample.x, sample.y, sample.color, 1)
+        guard roughRight - roughLeft >= Int(36 * scaleX) else { return nil }
+
+        let blockTop = findVerticalEdge(bitmap, sample.x, sample.y, sample.color, roughLeft, roughRight, -1)
+        let blockBottom = findVerticalEdge(bitmap, sample.x, sample.y, sample.color, roughLeft, roughRight, 1)
+        guard blockBottom - blockTop >= Int(22 * scaleY) else { return nil }
+
+        let refinedLeft = findHorizontalEdgeAcrossBlock(bitmap, sample.x, sample.color, blockTop, blockBottom, -1)
+        let refinedRight = findHorizontalEdgeAcrossBlock(bitmap, sample.x, sample.color, blockTop, blockBottom, 1)
+        let pixelLeft = max(0, min(roughLeft, refinedLeft))
+        let pixelRight = min(bitmap.pixelsWide - 1, max(roughRight, refinedRight))
+        let pixelTop = max(0, blockTop)
+        let pixelBottom = min(bitmap.pixelsHigh - 1, blockBottom)
+        let pixelWidth = pixelRight - pixelLeft + 1
+        let pixelHeight = pixelBottom - pixelTop + 1
+
+        let screenWidth = CGFloat(pixelWidth) / scaleX
+        let screenHeight = CGFloat(pixelHeight) / scaleY
+        guard screenWidth >= 40, screenHeight >= 24, screenWidth <= 560, screenHeight <= 380 else { return nil }
+
+        let bounds = Bounds(
+            left: Double(left + CGFloat(pixelLeft) / scaleX),
+            top: Double(top + CGFloat(pixelTop) / scaleY),
+            width: Double(screenWidth),
+            height: Double(screenHeight)
+        )
+        let imageDataUrl = includeImage ? cropImageAsDataUrl(image, pixelLeft, pixelTop, pixelWidth, pixelHeight) : nil
+        return VisualCapture(bounds: bounds, imageDataUrl: imageDataUrl)
+    }
+
+    private static func findNearbyAppointmentColor(_ bitmap: NSBitmapImageRep, _ x: Int, _ y: Int) -> ColorSample? {
+        var bestScore = -Double.greatestFiniteMagnitude
+        var best: ColorSample?
+        let radius = 18
+
+        stride(from: -radius, through: radius, by: 2).forEach { dy in
+            stride(from: -radius, through: radius, by: 2).forEach { dx in
+                let px = x + dx
+                let py = y + dy
+                guard isInsideBitmap(bitmap, px, py), let color = pixelColor(bitmap, px, py), looksLikeAppointmentFill(color) else { return }
+                let distance = sqrt(Double(dx * dx + dy * dy))
+                let score = color.saturation * 90 + color.brightness * 55 - distance
+                if score > bestScore {
+                    bestScore = score
+                    best = ColorSample(x: px, y: py, color: color)
+                }
+            }
+        }
+
+        return best
+    }
+
+    private static func findHorizontalEdge(_ bitmap: NSBitmapImageRep, _ startX: Int, _ y: Int, _ target: RGBColor, _ direction: Int) -> Int {
+        var x = startX
+        var misses = 0
+        var lastGood = startX
+        while x >= 0 && x < bitmap.pixelsWide {
+            let ratio = similarRatioInColumn(bitmap, x, y, target, 18)
+            if ratio >= 0.42 {
+                lastGood = x
+                misses = 0
+            } else {
+                misses += 1
+                if misses >= 4 { break }
+            }
+            x += direction
+        }
+        return lastGood
+    }
+
+    private static func findHorizontalEdgeAcrossBlock(_ bitmap: NSBitmapImageRep, _ startX: Int, _ target: RGBColor, _ top: Int, _ bottom: Int, _ direction: Int) -> Int {
+        var x = startX
+        var misses = 0
+        var lastGood = startX
+        while x >= 0 && x < bitmap.pixelsWide {
+            let ratio = similarRatioInColumnRange(bitmap, x, top, bottom, target)
+            if ratio >= 0.36 {
+                lastGood = x
+                misses = 0
+            } else {
+                misses += 1
+                if misses >= 3 { break }
+            }
+            x += direction
+        }
+        return lastGood
+    }
+
+    private static func findVerticalEdge(_ bitmap: NSBitmapImageRep, _ sampleX: Int, _ startY: Int, _ target: RGBColor, _ left: Int, _ right: Int, _ direction: Int) -> Int {
+        var y = startY
+        var lastGood = startY
+        while y >= 0 && y < bitmap.pixelsHigh {
+            let ratio = similarRatioInRowRange(bitmap, y, left, right, target)
+            if ratio >= 0.54 {
+                lastGood = y
+            } else if abs(y - startY) > 4 {
+                break
+            }
+            y += direction
+        }
+        return lastGood
+    }
+
+    private static func similarRatioInColumn(_ bitmap: NSBitmapImageRep, _ x: Int, _ centerY: Int, _ target: RGBColor, _ radius: Int) -> Double {
+        var hits = 0
+        var total = 0
+        for y in (centerY - radius)...(centerY + radius) {
+            guard isInsideBitmap(bitmap, x, y), let color = pixelColor(bitmap, x, y) else { continue }
+            total += 1
+            if isSimilarAppointmentFill(color, target) { hits += 1 }
+        }
+        return total == 0 ? 0 : Double(hits) / Double(total)
+    }
+
+    private static func similarRatioInColumnRange(_ bitmap: NSBitmapImageRep, _ x: Int, _ top: Int, _ bottom: Int, _ target: RGBColor) -> Double {
+        var hits = 0
+        var total = 0
+        let lower = max(0, min(top, bottom))
+        let upper = min(bitmap.pixelsHigh - 1, max(top, bottom))
+        let step = max(1, (upper - lower) / 80)
+        var y = lower
+        while y <= upper {
+            if isInsideBitmap(bitmap, x, y), let color = pixelColor(bitmap, x, y) {
+                total += 1
+                if isSimilarAppointmentFill(color, target) { hits += 1 }
+            }
+            y += step
+        }
+        return total == 0 ? 0 : Double(hits) / Double(total)
+    }
+
+    private static func similarRatioInRowRange(_ bitmap: NSBitmapImageRep, _ y: Int, _ left: Int, _ right: Int, _ target: RGBColor) -> Double {
+        var hits = 0
+        var total = 0
+        let lower = max(0, min(left, right))
+        let upper = min(bitmap.pixelsWide - 1, max(left, right))
+        let step = max(1, (upper - lower) / 160)
+        var x = lower
+        while x <= upper {
+            if isInsideBitmap(bitmap, x, y), let color = pixelColor(bitmap, x, y) {
+                total += 1
+                if isSimilarAppointmentFill(color, target) { hits += 1 }
+            }
+            x += step
+        }
+        return total == 0 ? 0 : Double(hits) / Double(total)
+    }
+
+    private static func looksLikeAppointmentFill(_ color: RGBColor) -> Bool {
+        if color.brightness < 0.32 { return false }
+        if color.saturation < 0.22 { return false }
+        return true
+    }
+
+    private static func isSimilarAppointmentFill(_ color: RGBColor, _ target: RGBColor) -> Bool {
+        if colorDistance(color, target) < 0.36 { return true }
+        if !looksLikeAppointmentFill(color) { return false }
+        let rawHueDiff = abs(color.hue - target.hue)
+        let hueDiff = min(rawHueDiff, 360 - rawHueDiff)
+        return hueDiff < 22 && abs(color.brightness - target.brightness) < 0.34
+    }
+
+    private static func colorDistance(_ a: RGBColor, _ b: RGBColor) -> Double {
+        let red = a.red - b.red
+        let green = a.green - b.green
+        let blue = a.blue - b.blue
+        return sqrt(red * red + green * green + blue * blue)
+    }
+
+    private static func pixelColor(_ bitmap: NSBitmapImageRep, _ x: Int, _ y: Int) -> RGBColor? {
+        guard isInsideBitmap(bitmap, x, y) else { return nil }
+        guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { return nil }
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        guard alpha > 0.15 else { return nil }
+        return RGBColor(red: Double(red), green: Double(green), blue: Double(blue))
+    }
+
+    private static func isInsideBitmap(_ bitmap: NSBitmapImageRep, _ x: Int, _ y: Int) -> Bool {
+        x >= 0 && y >= 0 && x < bitmap.pixelsWide && y < bitmap.pixelsHigh
+    }
+
+    private static func cropImageAsDataUrl(_ image: CGImage, _ left: Int, _ top: Int, _ width: Int, _ height: Int) -> String? {
+        let paddedLeft = max(0, left - 3)
+        let paddedTop = max(0, top - 3)
+        let paddedRight = min(image.width, left + width + 3)
+        let paddedBottom = min(image.height, top + height + 3)
+        let rect = CGRect(x: paddedLeft, y: paddedTop, width: max(1, paddedRight - paddedLeft), height: max(1, paddedBottom - paddedTop))
+        guard let crop = image.cropping(to: rect) else { return nil }
+        let representation = NSBitmapImageRep(cgImage: crop)
+        guard let data = representation.representation(using: .png, properties: [:]) else { return nil }
+        return "data:image/png;base64,\(data.base64EncodedString())"
     }
 
     private static func displayBounds(containing point: CGPoint) -> CGRect? {
