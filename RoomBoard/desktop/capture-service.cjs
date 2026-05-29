@@ -152,6 +152,10 @@ function createCaptureService(options = {}) {
     }
     tray.on("right-click", () => {
       lastTrayRightClickAt = Date.now();
+      if (isArmed) {
+        stopCapture("Capture cancelled.");
+        return;
+      }
       tray.popUpContextMenu(buildTrayMenu());
     });
     updateTray();
@@ -470,6 +474,11 @@ function createCaptureService(options = {}) {
 
     if (payload.type === "capture") {
       emitCaptured(payload);
+      return;
+    }
+
+    if (payload.type === "cancel") {
+      stopCapture(payload.message || "Capture cancelled.");
       return;
     }
 

@@ -16,6 +16,7 @@ namespace RoomBoard.Capture.Helper;
 internal static class Program
 {
     private const int VkLeftButton = 0x01;
+    private const int VkRightButton = 0x02;
     private const int GaRoot = 2;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -71,6 +72,7 @@ internal static class Program
     {
         var previousSignature = "";
         var previousLeftDown = IsLeftButtonDown();
+        var previousRightDown = IsRightButtonDown();
         var lastHover = DateTimeOffset.MinValue;
 
         WriteEvent(new CaptureEvent
@@ -101,7 +103,19 @@ internal static class Program
                 Thread.Sleep(220);
             }
 
+            var rightDown = IsRightButtonDown();
+            if (rightDown && !previousRightDown)
+            {
+                WriteEvent(new CaptureEvent
+                {
+                    Type = "cancel",
+                    Message = "Capture cancelled."
+                });
+                return;
+            }
+
             previousLeftDown = leftDown;
+            previousRightDown = rightDown;
             Thread.Sleep(60);
         }
     }
@@ -255,7 +269,9 @@ internal static class Program
             var right = Math.Min(screenBitmap.Width - 1, Math.Max(roughRight, refinedRight));
             var width = right - left + 1;
             var height = bottom - top + 1;
-            if (width < 40 || height < 24 || width > 520 || height > 360) return null;
+            top = ExpandTopToIncludeHeader(screenBitmap, top, left, right, sample.Color);
+            height = bottom - top + 1;
+            if (width < 40 || height < 24 || width > 780 || height > 520) return null;
 
             var bounds = new BoundsDto
             {
@@ -285,7 +301,7 @@ internal static class Program
     {
         var bestScore = double.NegativeInfinity;
         ColorSample? best = null;
-        const int radius = 18;
+        const int radius = 44;
 
         for (var dy = -radius; dy <= radius; dy += 2)
         {
@@ -386,6 +402,34 @@ internal static class Program
         return lastGood;
     }
 
+    private static int ExpandTopToIncludeHeader(Bitmap bitmap, int top, int left, int right, Color target)
+    {
+        var y = Math.Max(0, top - 1);
+        var lastGood = Math.Max(0, top);
+        var misses = 0;
+        var limit = Math.Max(0, top - 54);
+
+        while (y >= limit)
+        {
+            var similarRatio = SimilarRatioInRowRange(bitmap, y, left, right, target);
+            var appointmentRatio = AppointmentLikeRatioInRowRange(bitmap, y, left, right);
+            if (similarRatio >= 0.22 || appointmentRatio >= 0.42)
+            {
+                lastGood = y;
+                misses = 0;
+            }
+            else
+            {
+                misses += 1;
+                if (misses >= 3) break;
+            }
+
+            y -= 1;
+        }
+
+        return lastGood;
+    }
+
     private static double SimilarRatioInColumn(Bitmap bitmap, int x, int centerY, Color target, int radius)
     {
         var hits = 0;
@@ -432,13 +476,41 @@ internal static class Program
         return total == 0 ? 0 : (double)hits / total;
     }
 
+    private static double AppointmentLikeRatioInRowRange(Bitmap bitmap, int y, int left, int right)
+    {
+        var hits = 0;
+        var total = 0;
+        var step = Math.Max(1, (right - left) / 160);
+
+        for (var x = left; x <= right; x += step)
+        {
+            if (!IsInsideBitmap(bitmap, x, y)) continue;
+            total += 1;
+            var color = bitmap.GetPixel(x, y);
+            if (LooksLikeAppointmentFill(color) || IsDarkHeaderPixel(color)) hits += 1;
+        }
+
+        return total == 0 ? 0 : (double)hits / total;
+    }
+
     private static bool LooksLikeAppointmentFill(Color color)
     {
         var brightness = GetBrightness(color);
         var saturation = GetSaturation(color);
-        if (brightness < 0.32) return false;
-        if (saturation < 0.22) return false;
-        return true;
+        if (brightness > 0.92 && saturation < 0.10) return false;
+        if (brightness < 0.18) return false;
+        if (saturation >= 0.12 && brightness >= 0.28) return true;
+        if (saturation < 0.12 && brightness >= 0.22 && brightness <= 0.78) return true;
+        return false;
+    }
+
+    private static bool IsDarkHeaderPixel(Color color)
+    {
+        var brightness = GetBrightness(color);
+        var saturation = GetSaturation(color);
+        if (brightness < 0.24) return true;
+        if (saturation >= 0.18 && brightness >= 0.18 && brightness <= 0.52) return true;
+        return false;
     }
 
     private static bool IsSimilarAppointmentFill(Color color, Color target)
@@ -448,7 +520,12 @@ internal static class Program
 
         var hueDiff = Math.Abs(color.GetHue() - target.GetHue());
         hueDiff = Math.Min(hueDiff, 360 - hueDiff);
-        return hueDiff < 22 && Math.Abs(GetBrightness(color) - GetBrightness(target)) < 0.34;
+        if (GetSaturation(target) < 0.12 || GetSaturation(color) < 0.12)
+        {
+            return Math.Abs(GetBrightness(color) - GetBrightness(target)) < 0.20;
+        }
+
+        return hueDiff < 26 && Math.Abs(GetBrightness(color) - GetBrightness(target)) < 0.38;
     }
 
     private static double ColorDistance(Color a, Color b)
@@ -744,6 +821,11 @@ internal static class Program
     private static bool IsLeftButtonDown()
     {
         return (GetAsyncKeyState(VkLeftButton) & 0x8000) != 0;
+    }
+
+    private static bool IsRightButtonDown()
+    {
+        return (GetAsyncKeyState(VkRightButton) & 0x8000) != 0;
     }
 
     private static WindowInfo GetWindowInfoFromPoint(int x, int y)

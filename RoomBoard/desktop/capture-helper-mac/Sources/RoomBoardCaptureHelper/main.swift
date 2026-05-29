@@ -2,8 +2,10 @@ import ApplicationServices
 import AppKit
 import CoreGraphics
 import Foundation
+import Vision
 
 private let leftMouseButton = CGMouseButton.left
+private let rightMouseButton = CGMouseButton.right
 
 struct Bounds: Codable {
     let left: Double
@@ -15,6 +17,7 @@ struct Bounds: Codable {
 struct VisualCapture {
     let bounds: Bounds
     let imageDataUrl: String?
+    let text: String?
 }
 
 struct RGBColor {
@@ -119,6 +122,7 @@ struct RoomBoardCaptureHelper {
         write(StatusEvent(type: "status", message: "Mac capture helper started."))
         var previousSignature = ""
         var previousLeftDown = isLeftMouseDown()
+        var previousRightDown = isRightMouseDown()
         var lastHover = Date.distantPast
 
         while true {
@@ -139,7 +143,14 @@ struct RoomBoardCaptureHelper {
                 Thread.sleep(forTimeInterval: 0.22)
             }
 
+            let rightDown = isRightMouseDown()
+            if rightDown && !previousRightDown {
+                write(StatusEvent(type: "cancel", message: "Capture cancelled."))
+                return
+            }
+
             previousLeftDown = leftDown
+            previousRightDown = rightDown
             Thread.sleep(forTimeInterval: 0.06)
         }
     }
@@ -147,9 +158,11 @@ struct RoomBoardCaptureHelper {
     private static func inspect(point: CGPoint, type: String) -> CaptureEvent {
         let element = elementAt(point: point)
         let candidate = chooseCandidate(from: element)
-        let text = candidate.map(buildText) ?? ""
+        let accessibilityText = candidate.map(buildText) ?? ""
         let accessibilityBounds = candidate.flatMap(readBounds)
-        let visualCapture = captureScreenPreview(point: point, includeImage: type == "capture")
+        let visualCapture = captureScreenPreview(point: point, includeImage: type == "capture", includeText: type == "capture")
+        let visualText = normalize(visualCapture?.text)
+        let text = accessibilityText.isEmpty ? visualText : accessibilityText
         let bounds = chooseBestBounds(accessibilityBounds, visualCapture?.bounds)
         let appInfo = candidate.map(readAppInfo) ?? ("", "")
         let captureMethod = visualCapture?.bounds != nil && shouldPreferVisualBounds(accessibilityBounds, visualCapture?.bounds)
@@ -180,8 +193,8 @@ struct RoomBoardCaptureHelper {
         )
     }
 
-    private static func captureScreenPreview(point: CGPoint, includeImage: Bool) -> VisualCapture? {
-        if let visualBlock = detectVisualAppointmentBlock(point: point, includeImage: includeImage) {
+    private static func captureScreenPreview(point: CGPoint, includeImage: Bool, includeText: Bool) -> VisualCapture? {
+        if let visualBlock = detectVisualAppointmentBlock(point: point, includeImage: includeImage, includeText: includeText) {
             return visualBlock
         }
 
@@ -195,19 +208,17 @@ struct RoomBoardCaptureHelper {
         let bounds = Bounds(left: Double(left), top: Double(top), width: Double(cropWidth), height: Double(cropHeight))
 
         guard includeImage else {
-            return VisualCapture(bounds: bounds, imageDataUrl: nil)
+            return VisualCapture(bounds: bounds, imageDataUrl: nil, text: nil)
         }
 
         guard let image = CGWindowListCreateImage(cropRect, .optionOnScreenOnly, kCGNullWindowID, [.bestResolution, .nominalResolution]) else {
-            return VisualCapture(bounds: bounds, imageDataUrl: nil)
+            return VisualCapture(bounds: bounds, imageDataUrl: nil, text: nil)
         }
 
         let representation = NSBitmapImageRep(cgImage: image)
-        guard let data = representation.representation(using: .png, properties: [:]) else {
-            return VisualCapture(bounds: bounds, imageDataUrl: nil)
-        }
-
-        return VisualCapture(bounds: bounds, imageDataUrl: "data:image/png;base64,\(data.base64EncodedString())")
+        let dataUrl = representation.representation(using: .png, properties: [:]).map { "data:image/png;base64,\($0.base64EncodedString())" }
+        let text = includeText ? recognizeText(in: image) : nil
+        return VisualCapture(bounds: bounds, imageDataUrl: dataUrl, text: text)
     }
 
     private static func chooseBestBounds(_ accessibilityBounds: Bounds?, _ visualBounds: Bounds?) -> Bounds? {
@@ -228,7 +239,7 @@ struct RoomBoardCaptureHelper {
         return false
     }
 
-    private static func detectVisualAppointmentBlock(point: CGPoint, includeImage: Bool) -> VisualCapture? {
+    private static func detectVisualAppointmentBlock(point: CGPoint, includeImage: Bool, includeText: Bool) -> VisualCapture? {
         guard let displayBounds = displayBounds(containing: point) else { return nil }
 
         let captureWidth = min(920.0, max(1.0, displayBounds.width))
@@ -264,14 +275,14 @@ struct RoomBoardCaptureHelper {
         let refinedRight = findHorizontalEdgeAcrossBlock(bitmap, sample.x, sample.color, blockTop, blockBottom, 1)
         let pixelLeft = max(0, min(roughLeft, refinedLeft))
         let pixelRight = min(bitmap.pixelsWide - 1, max(roughRight, refinedRight))
-        let pixelTop = max(0, blockTop)
+        let pixelTop = expandTopToIncludeHeader(bitmap, blockTop, pixelLeft, pixelRight, sample.color)
         let pixelBottom = min(bitmap.pixelsHigh - 1, blockBottom)
         let pixelWidth = pixelRight - pixelLeft + 1
         let pixelHeight = pixelBottom - pixelTop + 1
 
         let screenWidth = CGFloat(pixelWidth) / scaleX
         let screenHeight = CGFloat(pixelHeight) / scaleY
-        guard screenWidth >= 40, screenHeight >= 24, screenWidth <= 560, screenHeight <= 380 else { return nil }
+        guard screenWidth >= 40, screenHeight >= 24, screenWidth <= 780, screenHeight <= 520 else { return nil }
 
         let bounds = Bounds(
             left: Double(left + CGFloat(pixelLeft) / scaleX),
@@ -279,14 +290,16 @@ struct RoomBoardCaptureHelper {
             width: Double(screenWidth),
             height: Double(screenHeight)
         )
-        let imageDataUrl = includeImage ? cropImageAsDataUrl(image, pixelLeft, pixelTop, pixelWidth, pixelHeight) : nil
-        return VisualCapture(bounds: bounds, imageDataUrl: imageDataUrl)
+        let crop = cropImage(image, pixelLeft, pixelTop, pixelWidth, pixelHeight)
+        let imageDataUrl = includeImage ? crop.flatMap(imageAsDataUrl) : nil
+        let text = includeText ? crop.flatMap(recognizeText) : nil
+        return VisualCapture(bounds: bounds, imageDataUrl: imageDataUrl, text: text)
     }
 
     private static func findNearbyAppointmentColor(_ bitmap: NSBitmapImageRep, _ x: Int, _ y: Int) -> ColorSample? {
         var bestScore = -Double.greatestFiniteMagnitude
         var best: ColorSample?
-        let radius = 18
+        let radius = 44
 
         stride(from: -radius, through: radius, by: 2).forEach { dy in
             stride(from: -radius, through: radius, by: 2).forEach { dx in
@@ -320,6 +333,28 @@ struct RoomBoardCaptureHelper {
             }
             x += direction
         }
+        return lastGood
+    }
+
+    private static func expandTopToIncludeHeader(_ bitmap: NSBitmapImageRep, _ top: Int, _ left: Int, _ right: Int, _ target: RGBColor) -> Int {
+        var y = max(0, top - 1)
+        var lastGood = max(0, top)
+        var misses = 0
+        let limit = max(0, top - 54)
+
+        while y >= limit {
+            let similarRatio = similarRatioInRowRange(bitmap, y, left, right, target)
+            let appointmentRatio = appointmentLikeRatioInRowRange(bitmap, y, left, right)
+            if similarRatio >= 0.22 || appointmentRatio >= 0.42 {
+                lastGood = y
+                misses = 0
+            } else {
+                misses += 1
+                if misses >= 3 { break }
+            }
+            y -= 1
+        }
+
         return lastGood
     }
 
@@ -401,10 +436,35 @@ struct RoomBoardCaptureHelper {
         return total == 0 ? 0 : Double(hits) / Double(total)
     }
 
+    private static func appointmentLikeRatioInRowRange(_ bitmap: NSBitmapImageRep, _ y: Int, _ left: Int, _ right: Int) -> Double {
+        var hits = 0
+        var total = 0
+        let lower = max(0, min(left, right))
+        let upper = min(bitmap.pixelsWide - 1, max(left, right))
+        let step = max(1, (upper - lower) / 160)
+        var x = lower
+        while x <= upper {
+            if isInsideBitmap(bitmap, x, y), let color = pixelColor(bitmap, x, y) {
+                total += 1
+                if looksLikeAppointmentFill(color) || isDarkHeaderPixel(color) { hits += 1 }
+            }
+            x += step
+        }
+        return total == 0 ? 0 : Double(hits) / Double(total)
+    }
+
     private static func looksLikeAppointmentFill(_ color: RGBColor) -> Bool {
-        if color.brightness < 0.32 { return false }
-        if color.saturation < 0.22 { return false }
-        return true
+        if color.brightness > 0.92 && color.saturation < 0.10 { return false }
+        if color.brightness < 0.18 { return false }
+        if color.saturation >= 0.12 && color.brightness >= 0.28 { return true }
+        if color.saturation < 0.12 && color.brightness >= 0.22 && color.brightness <= 0.78 { return true }
+        return false
+    }
+
+    private static func isDarkHeaderPixel(_ color: RGBColor) -> Bool {
+        if color.brightness < 0.24 { return true }
+        if color.saturation >= 0.18 && color.brightness >= 0.18 && color.brightness <= 0.52 { return true }
+        return false
     }
 
     private static func isSimilarAppointmentFill(_ color: RGBColor, _ target: RGBColor) -> Bool {
@@ -412,7 +472,10 @@ struct RoomBoardCaptureHelper {
         if !looksLikeAppointmentFill(color) { return false }
         let rawHueDiff = abs(color.hue - target.hue)
         let hueDiff = min(rawHueDiff, 360 - rawHueDiff)
-        return hueDiff < 22 && abs(color.brightness - target.brightness) < 0.34
+        if target.saturation < 0.12 || color.saturation < 0.12 {
+            return abs(color.brightness - target.brightness) < 0.20
+        }
+        return hueDiff < 26 && abs(color.brightness - target.brightness) < 0.38
     }
 
     private static func colorDistance(_ a: RGBColor, _ b: RGBColor) -> Double {
@@ -438,16 +501,42 @@ struct RoomBoardCaptureHelper {
         x >= 0 && y >= 0 && x < bitmap.pixelsWide && y < bitmap.pixelsHigh
     }
 
-    private static func cropImageAsDataUrl(_ image: CGImage, _ left: Int, _ top: Int, _ width: Int, _ height: Int) -> String? {
+    private static func cropImage(_ image: CGImage, _ left: Int, _ top: Int, _ width: Int, _ height: Int) -> CGImage? {
         let paddedLeft = max(0, left - 3)
         let paddedTop = max(0, top - 3)
         let paddedRight = min(image.width, left + width + 3)
         let paddedBottom = min(image.height, top + height + 3)
         let rect = CGRect(x: paddedLeft, y: paddedTop, width: max(1, paddedRight - paddedLeft), height: max(1, paddedBottom - paddedTop))
-        guard let crop = image.cropping(to: rect) else { return nil }
-        let representation = NSBitmapImageRep(cgImage: crop)
+        return image.cropping(to: rect)
+    }
+
+    private static func imageAsDataUrl(_ image: CGImage) -> String? {
+        let representation = NSBitmapImageRep(cgImage: image)
         guard let data = representation.representation(using: .png, properties: [:]) else { return nil }
         return "data:image/png;base64,\(data.base64EncodedString())"
+    }
+
+    private static func recognizeText(in image: CGImage) -> String? {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.minimumTextHeight = 0.018
+
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            return nil
+        }
+
+        let lines = (request.results ?? [])
+            .compactMap { $0.topCandidates(1).first?.string }
+            .map(normalize)
+            .filter { !$0.isEmpty }
+
+        var seen = Set<String>()
+        let uniqueLines = lines.filter { seen.insert($0).inserted }
+        return uniqueLines.isEmpty ? nil : uniqueLines.joined(separator: "\n")
     }
 
     private static func displayBounds(containing point: CGPoint) -> CGRect? {
@@ -629,6 +718,10 @@ struct RoomBoardCaptureHelper {
 
     private static func isLeftMouseDown() -> Bool {
         CGEventSource.buttonState(.combinedSessionState, button: leftMouseButton)
+    }
+
+    private static func isRightMouseDown() -> Bool {
+        CGEventSource.buttonState(.combinedSessionState, button: rightMouseButton)
     }
 
     private static func buildSignature(_ event: CaptureEvent) -> String {
