@@ -74,6 +74,9 @@ internal static class Program
         var previousLeftDown = IsLeftButtonDown();
         var previousRightDown = IsRightButtonDown();
         var lastHover = DateTimeOffset.MinValue;
+        var lastHoverInspect = DateTimeOffset.MinValue;
+        var lastHoverPoint = new PointDto { X = int.MinValue / 2, Y = int.MinValue / 2 };
+        var armedAt = DateTimeOffset.UtcNow;
 
         WriteEvent(new CaptureEvent
         {
@@ -84,19 +87,10 @@ internal static class Program
         while (true)
         {
             var point = GetCursorPoint();
-            var hover = InspectPoint(point.X, point.Y, "hover");
-            var signature = BuildSignature(hover);
             var now = DateTimeOffset.UtcNow;
 
-            if (signature != previousSignature || now - lastHover > TimeSpan.FromMilliseconds(350))
-            {
-                WriteEvent(hover);
-                previousSignature = signature;
-                lastHover = now;
-            }
-
             var leftDown = IsLeftButtonDown();
-            if (leftDown && !previousLeftDown)
+            if (leftDown && !previousLeftDown && now - armedAt > TimeSpan.FromMilliseconds(250))
             {
                 var capture = InspectPoint(point.X, point.Y, "capture");
                 WriteEvent(capture);
@@ -114,10 +108,39 @@ internal static class Program
                 return;
             }
 
+            if (ShouldInspectHover(point, lastHoverPoint, now, lastHoverInspect, lastHover))
+            {
+                var hover = InspectPoint(point.X, point.Y, "hover");
+                var signature = BuildSignature(hover);
+                lastHoverInspect = now;
+                lastHoverPoint = point;
+
+                if (signature != previousSignature || now - lastHover > TimeSpan.FromMilliseconds(550))
+                {
+                    WriteEvent(hover);
+                    previousSignature = signature;
+                    lastHover = now;
+                }
+            }
+
             previousLeftDown = leftDown;
             previousRightDown = rightDown;
-            Thread.Sleep(60);
+            Thread.Sleep(40);
         }
+    }
+
+    private static bool ShouldInspectHover(PointDto point, PointDto lastPoint, DateTimeOffset now, DateTimeOffset lastInspect, DateTimeOffset lastEmit)
+    {
+        if (now - lastInspect < TimeSpan.FromMilliseconds(180)) return false;
+        if (SquaredDistance(point, lastPoint) >= 25) return true;
+        return now - lastEmit > TimeSpan.FromMilliseconds(700);
+    }
+
+    private static long SquaredDistance(PointDto a, PointDto b)
+    {
+        var dx = (long)a.X - b.X;
+        var dy = (long)a.Y - b.Y;
+        return dx * dx + dy * dy;
     }
 
     private static CaptureEvent InspectPoint(int x, int y, string type)

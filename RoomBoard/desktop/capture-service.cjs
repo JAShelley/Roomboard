@@ -425,15 +425,32 @@ function createCaptureService(options = {}) {
 
   function emitHover(payload) {
     lastHoverPayload = payload || null;
+    const hoverBounds = chooseHoverBounds(payload);
     const overlayPayload = {
       ...payload,
-      overlayBounds: payload?.bounds ? convertBoundsToOverlay(payload.bounds) : null
+      overlayBounds: hoverBounds ? convertBoundsToOverlay(hoverBounds) : null
     };
 
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send("capture:hover", overlayPayload);
     }
     sendToTarget("capture:hover", payload);
+  }
+
+  function chooseHoverBounds(payload) {
+    const visualBounds = normalizeBounds(payload?.visualBounds);
+    if (isLikelyAppointmentBounds(visualBounds)) return visualBounds;
+
+    const bounds = normalizeBounds(payload?.bounds);
+    if (isLikelyAppointmentBounds(bounds)) return bounds;
+    return null;
+  }
+
+  function isLikelyAppointmentBounds(bounds) {
+    if (!bounds) return false;
+    if (bounds.width < 32 || bounds.height < 20) return false;
+    if (bounds.width > 820 || bounds.height > 560) return false;
+    return true;
   }
 
   function sendCapturedToTarget(captured) {

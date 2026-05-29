@@ -124,21 +124,16 @@ struct RoomBoardCaptureHelper {
         var previousLeftDown = isLeftMouseDown()
         var previousRightDown = isRightMouseDown()
         var lastHover = Date.distantPast
+        var lastHoverInspect = Date.distantPast
+        var lastHoverPoint = CGPoint(x: -10000, y: -10000)
+        let armedAt = Date()
 
         while true {
             let point = currentMouseLocation()
-            let hover = inspect(point: point, type: "hover")
-            let signature = buildSignature(hover)
             let now = Date()
 
-            if signature != previousSignature || now.timeIntervalSince(lastHover) > 0.35 {
-                write(hover)
-                previousSignature = signature
-                lastHover = now
-            }
-
             let leftDown = isLeftMouseDown()
-            if leftDown && !previousLeftDown {
+            if leftDown && !previousLeftDown && now.timeIntervalSince(armedAt) > 0.25 {
                 write(inspect(point: point, type: "capture"))
                 Thread.sleep(forTimeInterval: 0.22)
             }
@@ -149,10 +144,30 @@ struct RoomBoardCaptureHelper {
                 return
             }
 
+            if shouldInspectHover(point: point, lastPoint: lastHoverPoint, now: now, lastInspect: lastHoverInspect, lastEmit: lastHover) {
+                let hover = inspect(point: point, type: "hover")
+                let signature = buildSignature(hover)
+                lastHoverInspect = now
+                lastHoverPoint = point
+
+                if signature != previousSignature || now.timeIntervalSince(lastHover) > 0.55 {
+                    write(hover)
+                    previousSignature = signature
+                    lastHover = now
+                }
+            }
+
             previousLeftDown = leftDown
             previousRightDown = rightDown
-            Thread.sleep(forTimeInterval: 0.06)
+            Thread.sleep(forTimeInterval: 0.04)
         }
+    }
+
+    private static func shouldInspectHover(point: CGPoint, lastPoint: CGPoint, now: Date, lastInspect: Date, lastEmit: Date) -> Bool {
+        let minInterval = 0.18
+        if now.timeIntervalSince(lastInspect) < minInterval { return false }
+        if squaredDistance(point, lastPoint) >= 25 { return true }
+        return now.timeIntervalSince(lastEmit) > 0.70
     }
 
     private static func inspect(point: CGPoint, type: String) -> CaptureEvent {
@@ -722,6 +737,12 @@ struct RoomBoardCaptureHelper {
 
     private static func isRightMouseDown() -> Bool {
         CGEventSource.buttonState(.combinedSessionState, button: rightMouseButton)
+    }
+
+    private static func squaredDistance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = a.x - b.x
+        let dy = a.y - b.y
+        return dx * dx + dy * dy
     }
 
     private static func buildSignature(_ event: CaptureEvent) -> String {
