@@ -252,7 +252,6 @@ app.whenReady().then(async () => {
     openLabel: "Open RoomBoard",
     openReviewOnCapture: true,
     openTargetWindow: showMainWindow,
-    quickSendLabel: "Quick Send",
     quickSendWindowOptions: {
       height: 700,
       minHeight: 560,
@@ -265,7 +264,7 @@ app.whenReady().then(async () => {
       app.quit();
     },
     quitLabel: "Quit RoomBoard",
-    trayClickAction: "quick-send",
+    trayClickAction: "capture",
     trayToolTip: "RoomBoard"
   });
   captureService.registerIpc();

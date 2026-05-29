@@ -54,7 +54,6 @@ function createCaptureService(options = {}) {
     || process.env.ROOMBOARD_CAPTURE_OPEN_ON_CAPTURE === "1";
   const useReviewWindow = options.useReviewWindow === true;
   const reviewWindowOptions = options.reviewWindowOptions || {};
-  const quickSendLabel = options.quickSendLabel || "Quick Send";
   const quickSendWindowOptions = options.quickSendWindowOptions || {};
   const trayClickAction = options.trayClickAction || "capture";
 
@@ -161,10 +160,6 @@ function createCaptureService(options = {}) {
 
   function buildTrayMenu() {
     const menuItems = [
-      {
-        label: quickSendLabel,
-        click: () => openQuickSendSurface(isArmed ? "Capture active." : "Ready.")
-      },
       {
         label: openLabel,
         click: () => openReviewSurface(isArmed ? "Capture active." : "Ready.")
