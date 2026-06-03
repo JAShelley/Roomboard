@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RoomBoard Stats</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#07111f; --panel:#111d33; --panel2:#0b1527; --line:rgba(148,163,184,.18);
+    --text:#e7edf7; --muted:#92a3bd; --accent:#5eead4; --blue:#38bdf8; --warn:#fbbf24; --danger:#fb7185;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; min-height:100vh; font-family:"Avenir Next","Segoe UI",sans-serif; background:#07111f; color:var(--text)}
+  .shell{max-width:1220px; margin:0 auto; padding:28px 16px 42px}
+  header{display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:18px}
+  h1{margin:0; font-size:clamp(2rem,5vw,3.4rem); line-height:1; letter-spacing:-.03em}
+  p{color:var(--muted)}
+  .status{display:inline-flex; margin-top:12px; padding:10px 13px; border:1px solid var(--line); border-radius:999px; color:var(--muted); background:rgba(17,29,51,.8)}
+  .grid{display:grid; gap:16px}
+  .card{border:1px solid var(--line); background:linear-gradient(180deg,rgba(17,29,51,.96),rgba(11,21,39,.96)); border-radius:18px; padding:18px; box-shadow:0 24px 70px rgba(1,8,18,.32)}
+  .toolbar{display:flex; justify-content:space-between; align-items:end; gap:12px; flex-wrap:wrap}
+  .fields{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr)); gap:12px; align-items:end; margin-top:12px}
+  label{display:block; color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; font-weight:800; margin-bottom:7px}
+  input,select{width:100%; min-height:46px; padding:11px 13px; border:1px solid rgba(148,163,184,.18); border-radius:12px; background:rgba(6,13,26,.72); color:var(--text); font:inherit}
+  input:focus,select:focus{outline:0; border-color:rgba(94,234,212,.55); box-shadow:0 0 0 3px rgba(94,234,212,.12)}
+  button{min-height:44px; border:0; border-radius:999px; padding:10px 16px; font:inherit; font-weight:800; cursor:pointer}
+  button:disabled{opacity:.55; cursor:not-allowed}
+  .primary{background:linear-gradient(135deg,var(--accent),var(--blue)); color:#04111f}
+  .secondary{background:rgba(94,234,212,.11); color:var(--accent); border:1px solid rgba(94,234,212,.18)}
+  .ghost{background:rgba(255,255,255,.04); color:var(--text); border:1px solid var(--line)}
+  .actions{display:flex; gap:10px; flex-wrap:wrap}
+  .metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px}
+  .metric{padding:14px; border-radius:14px; background:rgba(6,13,26,.54); border:1px solid rgba(148,163,184,.14)}
+  .metric strong{display:block; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-size:.72rem}
+  .metric span{display:block; margin-top:7px; font-size:1.28rem; font-weight:900}
+  .metric em{display:block; margin-top:5px; color:var(--muted); font-style:normal; font-size:.84rem}
+  .split{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  table{width:100%; border-collapse:collapse}
+  th,td{padding:11px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top}
+  th{color:var(--muted); text-transform:uppercase; letter-spacing:.08em; font-size:.72rem}
+  .num{text-align:right; white-space:nowrap}
+  .chart{min-height:300px; border:1px solid rgba(148,163,184,.14); border-radius:14px; padding:12px; background:rgba(6,13,26,.38); overflow:auto}
+  .empty{padding:18px; border:1px dashed rgba(148,163,184,.2); border-radius:14px; color:var(--muted)}
+  .warn{color:#ffd98a}
+  @media(max-width:760px){header,.toolbar{display:block}.actions button{width:100%}.split{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <h1>RoomBoard Stats</h1>
+      <p>Private analytics view for room sessions and cleanings. This page is not linked from RoomBoard.</p>
+      <div class="status" id="statusLine">Loading...</div>
+    </div>
+    <button class="ghost" id="logoutBtn" type="button" hidden>Logout</button>
+  </header>
+
+  <main class="grid">
+    <section class="card" id="loginCard">
+      <h2>Login</h2>
+      <p>Use the same account as RoomBoard.</p>
+      <div class="fields">
+        <div><label for="email">Email</label><input id="email" autocomplete="username" placeholder="name@clinic.com" /></div>
+        <div><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" placeholder="password" /></div>
+      </div>
+      <div class="actions" style="margin-top:14px"><button class="primary" id="loginBtn" type="button">Login</button></div>
+    </section>
+
+    <section class="card">
+      <div class="toolbar">
+        <div><h2>Filters</h2><p>Stats fetch in 1,000-row pages, so larger ranges are supported.</p></div>
+        <div class="actions">
+          <button class="secondary" id="exportBtn" type="button">Export CSV</button>
+          <button class="primary" id="refreshBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="fields">
+        <div><label for="startDate">Start date</label><input id="startDate" type="date" /></div>
+        <div><label for="endDate">End date</label><input id="endDate" type="date" /></div>
+        <div><label for="groupBy">Group by</label><select id="groupBy"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option></select></div>
+        <div><label for="doctorFilter">Doctor</label><select id="doctorFilter"><option value="">All doctors</option></select></div>
+      </div>
+    </section>
+
+    <section class="metrics" id="metrics"></section>
+
+    <section class="card">
+      <h2>Visit Trend</h2>
+      <div class="chart" id="chart"><div class="empty">Login and refresh to load the chart.</div></div>
+    </section>
+
+    <section class="split">
+      <div class="card"><h2>Doctors</h2><div id="doctorTable" class="empty">No data loaded.</div></div>
+      <div class="card"><h2>Rooms</h2><div id="roomTable" class="empty">No data loaded.</div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  var SUPABASE_URL = "https://bqqjtgbfvtscwhbhscps.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_NqK4gR7x45P1rjA-6DJngg_QmOiWXMi";
+  var PAGE_SIZE = 1000;
+  var supabaseClient = null;
+  var lastRows = null;
+
+  function $(id){ return document.getElementById(id); }
+  function esc(v){ return String(v == null ? "" : v).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c];}); }
+  function setStatus(msg){ $("statusLine").textContent = msg || ""; }
+  function pad(n){ return String(n).padStart(2,"0"); }
+  function dateValue(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function msToHMS(ms){ ms=Number(ms||0); if(!isFinite(ms)||ms<0)ms=0; var s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60); return pad(h)+":"+pad(m)+":"+pad(s%60); }
+  function number(v){ v=Number(v||0); if(!isFinite(v))v=0; var r=Math.round(v*10)/10; return Math.abs(r-Math.round(r))<.001 ? String(Math.round(r)) : r.toFixed(1); }
+  function median(a){ if(!a.length)return 0; a=a.slice().sort(function(x,y){return x-y}); var m=Math.floor(a.length/2); return a.length%2?a[m]:(a[m-1]+a[m])/2; }
+  function percentile(a,p){ if(!a.length)return 0; a=a.slice().sort(function(x,y){return x-y}); if(a.length===1)return a[0]; var i=(a.length-1)*p, lo=Math.floor(i), hi=Math.ceil(i); return lo===hi?a[lo]:a[lo]+(a[hi]-a[lo])*(i-lo); }
+  function csv(v){ v=v==null?"":String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+  function fmtDate(v){ var d=new Date(v); return isNaN(d)?"-":d.toLocaleDateString([], {month:"short", day:"numeric", year:"numeric"}); }
+
+  function initDates(){ var end=new Date(); var start=new Date(end.getTime()-29*86400000); $("startDate").value=dateValue(start); $("endDate").value=dateValue(end); }
+  function range(){ var s=new Date($("startDate").value+"T00:00:00"), e=new Date($("endDate").value+"T00:00:00"); if(isNaN(s))s=new Date(Date.now()-29*86400000); if(isNaN(e))e=new Date(); if(s>e){ var t=s; s=e; e=t; $("startDate").value=dateValue(s); $("endDate").value=dateValue(e); } return { startIso:s.toISOString(), endIso:new Date(e.getTime()+86400000).toISOString(), start:s, end:e }; }
+  function periodKey(iso, mode){ var d=new Date(iso); if(isNaN(d))return "Unknown"; if(mode==="month")return d.getFullYear()+"-"+pad(d.getMonth()+1); if(mode==="week"){ var w=new Date(d); var diff=(w.getDay()===0?-6:1-w.getDay()); w.setDate(w.getDate()+diff); return w.getFullYear()+"-W"+pad(getWeek(w)); } return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function getWeek(d){ var x=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); var n=x.getUTCDay()||7; x.setUTCDate(x.getUTCDate()+4-n); var y=new Date(Date.UTC(x.getUTCFullYear(),0,1)); return Math.ceil((((x-y)/86400000)+1)/7); }
+  function periodLabel(k, mode){ if(mode==="month"){ var p=k.split("-"); return new Date(+p[0],+p[1]-1,1).toLocaleDateString([], {month:"short", year:"numeric"}); } if(mode==="week")return k.replace("-W"," week "); return fmtDate(k+"T00:00:00"); }
+
+  async function requireSession(){ var res=await supabaseClient.auth.getSession(); if(res && res.data && res.data.session)return true; setStatus("Login required."); return false; }
+  async function login(){ var email=$("email").value.trim(), password=$("password").value.trim(); if(!email||!password)return; $("loginBtn").disabled=true; setStatus("Logging in..."); try{ var res=await supabaseClient.auth.signInWithPassword({email:email,password:password}); if(res.error)throw res.error; setAuth(true); setStatus("Logged in. Loading stats..."); refresh(); }catch(e){ setStatus("Login failed: "+(e.message||String(e))); alert("Login failed: "+(e.message||String(e))); } finally { $("loginBtn").disabled=false; } }
+  async function logout(){ try{ await supabaseClient.auth.signOut(); }catch(e){} setAuth(false); setStatus("Logged out."); }
+  function setAuth(on){ $("loginCard").hidden=!!on; $("logoutBtn").hidden=!on; }
+
+  async function fetchRows(table, columns, r){ var out=[], offset=0; while(true){ var res=await supabaseClient.from(table).select(columns).gte("started_at",r.startIso).lt("started_at",r.endIso).not("ended_at","is",null).order("started_at",{ascending:true}).range(offset, offset+PAGE_SIZE-1); if(res.error)throw res.error; var page=res.data||[]; out=out.concat(page); if(page.length<PAGE_SIZE)break; offset+=PAGE_SIZE; } return out; }
+  async function refresh(){ if(!await requireSession())return; $("refreshBtn").disabled=true; setStatus("Loading stats..."); var r=range(); try{ var results=await Promise.all([fetchRows("room_sessions","room_name, doctor_name, duration_ms, started_at, ended_at",r), fetchRows("cleaning_sessions","room_name, duration_ms, started_at, ended_at",r)]); lastRows={room:results[0], cleaning:results[1]}; populateDoctors(lastRows.room); render(lastRows.room,lastRows.cleaning); setStatus("Stats updated. Loaded "+lastRows.room.length+" visits and "+lastRows.cleaning.length+" cleanings."); }catch(e){ setStatus("Failed to load stats: "+(e.message||String(e))); } finally { $("refreshBtn").disabled=false; } }
+
+  function populateDoctors(rows){ var current=$("doctorFilter").value, map={}; rows.forEach(function(r){ var n=(r.doctor_name||"").trim(); if(n)map[n]=1; }); var names=Object.keys(map).sort(); $("doctorFilter").innerHTML='<option value="">All doctors</option>'+names.map(function(n){return '<option value="'+esc(n)+'">'+esc(n)+'</option>';}).join(""); if(map[current])$("doctorFilter").value=current; }
+  function filteredRows(rows){ var d=$("doctorFilter").value; return d?rows.filter(function(r){return (r.doctor_name||"").trim()===d;}):rows.slice(); }
+  function render(roomRows, cleaningRows){ var rooms=filteredRows(roomRows), dur=rooms.map(function(r){return +r.duration_ms||0}).filter(function(v){return v>=0}), cleanDur=cleaningRows.map(function(r){return +r.duration_ms||0}).filter(function(v){return v>=0}); var total=dur.reduce(function(a,b){return a+b},0); var unique={}; rooms.forEach(function(r){ if(r.room_name)unique[r.room_name]=1; }); metrics([{k:"Visits",v:rooms.length,e:"Closed appointments"},{k:"Avg room time",v:msToHMS(dur.length?total/dur.length:0),e:"Mean duration"},{k:"Median",v:msToHMS(median(dur)),e:"Typical duration"},{k:"P90",v:msToHMS(percentile(dur,.9)),e:"Upper-end duration"},{k:"Cleanings",v:cleaningRows.length,e:"Closed cleanings"},{k:"Avg clean",v:msToHMS(cleanDur.length?cleanDur.reduce(function(a,b){return a+b},0)/cleanDur.length:0),e:"Turnaround"},{k:"Room hours",v:number(total/3600000),e:"Total appointment hours"},{k:"Rooms used",v:Object.keys(unique).length,e:"Distinct rooms"}]); renderChart(rooms); renderTables(rooms, cleaningRows); }
+  function metrics(items){ $("metrics").innerHTML=items.map(function(i){return '<div class="metric"><strong>'+esc(i.k)+'</strong><span>'+esc(i.v)+'</span><em>'+esc(i.e)+'</em></div>';}).join(""); }
+  function renderChart(rows){ var mode=$("groupBy").value, map={}; rows.forEach(function(r){ var k=periodKey(r.started_at,mode); if(!map[k])map[k]={count:0,total:0}; map[k].count++; map[k].total+=(+r.duration_ms||0); }); var keys=Object.keys(map).sort(); if(!keys.length){ $("chart").innerHTML='<div class="empty">No visits in this range.</div>'; return; } var max=Math.max.apply(null,keys.map(function(k){return map[k].count;})); var w=Math.max(760,keys.length*86), h=290, left=54, bottom=55, top=18, right=24, inner=w-left-right, ch=h-top-bottom; function x(i){return left+(keys.length===1?inner/2:inner*i/(keys.length-1));} function y(v){return top+ch-(v/max)*ch;} var path=keys.map(function(k,i){return (i?'L':'M')+x(i)+' '+y(map[k].count);}).join(' '); var dots=keys.map(function(k,i){return '<circle cx="'+x(i)+'" cy="'+y(map[k].count)+'" r="4.5" fill="#5eead4"><title>'+esc(periodLabel(k,mode))+': '+map[k].count+' visits</title></circle>';}).join(''); var labels=keys.map(function(k,i){ if(i!==0&&i!==keys.length-1&&i%Math.ceil(keys.length/8)!==0)return ''; var xx=x(i); return '<text x="'+xx+'" y="'+(h-18)+'" text-anchor="end" transform="rotate(-26 '+xx+' '+(h-18)+')">'+esc(periodLabel(k,mode))+'</text>'; }).join(''); $("chart").innerHTML='<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="310" style="min-width:'+w+'px"><line x1="'+left+'" y1="'+(top+ch)+'" x2="'+(w-right)+'" y2="'+(top+ch)+'" stroke="rgba(148,163,184,.35)"/><line x1="'+left+'" y1="'+top+'" x2="'+left+'" y2="'+(top+ch)+'" stroke="rgba(148,163,184,.35)"/><path d="'+path+'" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'+dots+'<g fill="rgba(226,232,240,.7)" font-size="11" font-weight="700">'+labels+'<text x="'+(left-10)+'" y="'+(y(max)+4)+'" text-anchor="end">'+max+'</text><text x="'+(left-10)+'" y="'+(top+ch+4)+'" text-anchor="end">0</text></g></svg>'; }
+  function renderTables(roomRows, cleaningRows){ var doctors={}, rooms={}; roomRows.forEach(function(r){ var d=(r.doctor_name||"Unassigned").trim()||"Unassigned", room=(r.room_name||"(unnamed room)").trim()||"(unnamed room)", ms=+r.duration_ms||0; if(!doctors[d])doctors[d]={count:0,total:0,dur:[]}; doctors[d].count++; doctors[d].total+=ms; doctors[d].dur.push(ms); if(!rooms[room])rooms[room]={visits:0,total:0,clean:0,last:""}; rooms[room].visits++; rooms[room].total+=ms; if(!rooms[room].last||new Date(r.started_at)>new Date(rooms[room].last))rooms[room].last=r.started_at; }); cleaningRows.forEach(function(r){ var room=(r.room_name||"(unnamed room)").trim()||"(unnamed room)"; if(!rooms[room])rooms[room]={visits:0,total:0,clean:0,last:""}; rooms[room].clean++; if(!rooms[room].last||new Date(r.started_at)>new Date(rooms[room].last))rooms[room].last=r.started_at; }); table("doctorTable",["Doctor","Visits","Avg","Median","Hours"],Object.keys(doctors).sort(function(a,b){return doctors[b].count-doctors[a].count}).map(function(n){var d=doctors[n]; return [n,d.count,msToHMS(d.total/d.count),msToHMS(median(d.dur)),number(d.total/3600000)];})); table("roomTable",["Room","Visits","Avg","Cleanings","Last used"],Object.keys(rooms).sort(function(a,b){return rooms[b].visits-rooms[a].visits}).map(function(n){var r=rooms[n]; return [n,r.visits,msToHMS(r.visits?r.total/r.visits:0),r.clean,fmtDate(r.last)];})); }
+  function table(id, heads, rows){ if(!rows.length){ $(id).innerHTML='<div class="empty">No data available.</div>'; return; } $(id).innerHTML='<table><thead><tr>'+heads.map(function(h,i){return '<th class="'+(i?'num':'')+'">'+esc(h)+'</th>';}).join('')+'</tr></thead><tbody>'+rows.map(function(row){return '<tr>'+row.map(function(c,i){return '<td class="'+(i?'num':'')+'">'+esc(c)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>'; }
+  function exportCsv(){ if(!lastRows){ setStatus("Nothing to export yet."); return; } var rows=[['kind','started_at','ended_at','duration_ms','room_name','doctor_name']]; lastRows.room.forEach(function(r){rows.push(['room_session',r.started_at,r.ended_at,r.duration_ms,r.room_name,r.doctor_name||'']);}); lastRows.cleaning.forEach(function(r){rows.push(['cleaning_session',r.started_at,r.ended_at,r.duration_ms,r.room_name,'']);}); var blob=new Blob([rows.map(function(r){return r.map(csv).join(',')}).join('\n')],{type:'text/csv;charset=utf-8'}); var url=URL.createObjectURL(blob), a=document.createElement('a'); a.href=url; a.download='roomboard-stats.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+
+  async function init(){ initDates(); supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}); $("loginBtn").addEventListener("click",login); $("logoutBtn").addEventListener("click",logout); $("refreshBtn").addEventListener("click",refresh); $("exportBtn").addEventListener("click",exportCsv); $("doctorFilter").addEventListener("change",function(){ if(lastRows)render(lastRows.room,lastRows.cleaning); }); $("groupBy").addEventListener("change",function(){ if(lastRows)render(lastRows.room,lastRows.cleaning); }); var session=await supabaseClient.auth.getSession(); var logged=!!(session&&session.data&&session.data.session); setAuth(logged); setStatus(logged?"Logged in. Refresh to load stats.":"Login required."); }
+  init();
+})();
+</script>
+</body>
+</html>
