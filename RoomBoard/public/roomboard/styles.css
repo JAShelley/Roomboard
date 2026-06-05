@@ -408,8 +408,11 @@
 
     main{max-width:1400px; margin:0 auto; padding:14px;}
     body.displayTabActive main{
+      max-width:none;
+      width:100%;
       height: calc(100vh - var(--appHeaderHeight, 0px));
       overflow:hidden;
+      padding:10px 12px 12px;
     }
     html.boardFullscreen main{
       padding:10px 16px 16px;

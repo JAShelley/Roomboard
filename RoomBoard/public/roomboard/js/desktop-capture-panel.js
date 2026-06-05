@@ -9,10 +9,14 @@
   const TIME_RANGE_RE = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-\u2013]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i;
   const SINGLE_TIME_RE = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i;
   const DOCTOR_RE = /\b(?:dr\.?|doctor|dvm|d\.v\.m\.|provider|vet)\b/i;
+  const DOCTOR_NAME_RE = /\b(?:dr\.?|doctor|d\.?\s*v\.?\s*m\.?|dvm)\b/i;
   const PATIENT_NAME_RE = /^[^\w(]*(?:\([A-Z?]\s*,?\s*\d{0,3}\)\s*)?([A-Z][A-Za-z'`.-]+(?:\s+[A-Z][A-Za-z'`.-]+)*(?:\s+\([^)]+\))?)/;
   const PHONE_RE = /\b(?:\(?\d{3}\)?[-.\s]*)?\d{3}[-.\s]\d{4}\b|\(\d{3}\)/;
   const CONTACT_LINE_RE = /^(?:[HWC]\.?\s*)?(?:\(?\d{3}\)?[-.\s]*)?\d{3}[-.\s]\d{4}\b/i;
   const ROOM_HINT_RE = /\b(?:exam\s+room|room|rm|treatment|tx|surgery|sx|tech|triage|isolation|drop\s*off|boarding|kennel|exam)\s*#?\s*([A-Za-z0-9-]+)?\b/i;
+  const SURGERY_COLUMN_RE = /\b(?:surgery|sx)\b/i;
+  const TECH_COLUMN_RE = /\b(?:tech|walk back|walkback)\b/i;
+  const DROP_OFF_COLUMN_RE = /\b(?:drop ?off|dropoff)\b/i;
   const TYPE_ALIAS_GROUPS = [
     { aliases: ["euth", "euthanasia", "pts", "put to sleep", "quality of life", "qol"], labels: ["euthanasia consult", "euthanasia"] },
     { aliases: ["sx", "surgery", "surgical", "spay", "neuter", "dental", "mass", "fracture", "procedure"], labels: ["sx consult", "surgery consult", "surgery", "consult"] },
@@ -23,6 +27,24 @@
     { aliases: ["vaccine", "vacc", "vaccs", "booster", "rabies", "dhpp", "bordetella", "bord", "lepto", "lyme", "flu"], labels: ["vaccine", "vacc", "wellness"] },
     { aliases: ["illness injury", "illness/injury", "injury illness", "illness", "injury", "sick", "vomit", "diarrhea", "limp", "pain", "cough", "itch", "ear"], labels: ["illness/injury", "illness injury", "sick", "exam"] },
     { aliases: ["outside contagious", "outside contageous", "outside constagious", "outside", "contagious", "car", "isolation"], labels: ["outside contagious", "car isolation", "car - isolation"] }
+  ];
+  const PULSE_TYPE_LABEL_MAP = [
+    { pulse: ["surgery consult"], vetboard: ["sx consult"] },
+    { pulse: ["surgical"], vetboard: ["sx consult"] },
+    { pulse: ["dental"], vetboard: ["sx consult"] },
+    { pulse: ["emergency"], vetboard: ["emergency"] },
+    { pulse: ["euthanasia", "euthanasia consult", "quality of life", "qol", "pts"], vetboard: ["euthanasia consult", "euthanasia"] },
+    { pulse: ["illness/injury", "illness / injury", "illness injury", "injury illness"], vetboard: ["illness/injury", "illness injury"] },
+    { pulse: ["exam"], vetboard: ["exam"] },
+    { pulse: ["recheck"], vetboard: ["exam", "recheck"] },
+    { pulse: ["new puppy/kitten", "new puppy kitten", "new puppy", "new kitten"], vetboard: ["exam", "wellness"] },
+    { pulse: ["ultrasound", "ultra sound", "u/s", "abd ultrasound", "abdominal ultrasound"], vetboard: ["ultrasound", "u/s"] },
+    { pulse: ["tech/walk back", "tech/walkback", "tech walk back", "tech walkback"], vetboard: ["tech/walkback", "tech/walk back", "tech appt", "tech"] },
+    { pulse: ["outside**contagious", "outside contagious", "outside contageous", "outside constagious"], vetboard: ["outside**contagious", "outside contagious", "car isolation", "car - isolation"] },
+    { pulse: ["work-in", "work in"], vetboard: ["work-in", "work in"] },
+    { pulse: ["drop off", "drop-off", "sample drop off"], vetboard: ["work-in", "work in", "drop-off", "drop off"] },
+    { pulse: ["bandage change"], vetboard: ["tech/walkback", "tech/walk back", "tech appt", "tech"] },
+    { pulse: ["surgical referral"], vetboard: ["sx consult"] }
   ];
 
   const state = {
@@ -854,33 +876,55 @@
     const lines = rawText
       .split(/\r?\n|\s+\|\s+/)
       .map((line) => normalizeCalendarLine(line))
+      .flatMap((line) => expandCapturedLine(line))
       .filter(Boolean)
       .filter((line, index, all) => all.indexOf(line) === index);
 
+    const pulseDetails = parsePulseDetails(lines);
     const appointmentTime = lines.find((line) => TIME_RANGE_RE.test(line))?.match(TIME_RANGE_RE)?.[0]
       || lines.find((line) => SINGLE_TIME_RE.test(line))?.match(SINGLE_TIME_RE)?.[0]
       || "";
 
     const doctorLine = lines.find((line) => DOCTOR_RE.test(line)) || "";
-    const doctor = extractDoctorName(doctorLine);
+    const doctor = extractDoctorName(pulseDetails.provider)
+      || extractDoctorName(doctorLine)
+      || extractDoctorName(rawText);
     const patientLineIndex = findPatientLineIndex(lines, appointmentTime);
-    const patientName = patientLineIndex >= 0 ? extractCalendarPatientName(lines[patientLineIndex]) : "";
+    const patientName = cleanPulsePatientName(pulseDetails.patient)
+      || (patientLineIndex >= 0 ? extractCalendarPatientName(lines[patientLineIndex]) : "");
     const reasonLines = lines.filter((line, index) => {
       if (!line) return false;
       if (index === patientLineIndex || line === patientName || line === doctorLine || line === doctor || line === appointmentTime) return false;
+      if (isPulseDetailLabelOrValue(line, pulseDetails)) return false;
       if (TIME_RANGE_RE.test(line) || SINGLE_TIME_RE.test(line)) return false;
       return isLikelyAppointmentReasonLine(line);
     });
-    const roomHint = extractRoomHint([...lines, sourceText]);
-    const columnHeader = extractColumnHeader([...lines, sourceText], roomHint);
+    const reason = [
+      pulseDetails.type,
+      pulseDetails.description,
+      pulseDetails.status,
+      ...reasonLines
+    ].filter(Boolean).filter((line, index, all) => all.indexOf(line) === index).slice(0, 5).join(", ");
+    const inferredColumnHeader = inferWorkflowColumnFromText([
+      pulseDetails.type,
+      pulseDetails.description,
+      pulseDetails.status,
+      rawText,
+      sourceText
+    ].filter(Boolean).join(" | "));
+    const roomHint = extractRoomHint([...lines, inferredColumnHeader, sourceText]);
+    const columnHeader = chooseBestColumnHeader(
+      extractColumnHeader([...lines, sourceText], roomHint),
+      inferredColumnHeader
+    );
 
     return {
       patientName,
-      reason: reasonLines.slice(0, 3).join(", "),
+      reason,
       doctor,
       appointmentTime,
-      typeText: reasonLines[0] || "",
-      descriptionText: reasonLines.slice(1).join(", "),
+      typeText: pulseDetails.type || reasonLines[0] || "",
+      descriptionText: pulseDetails.description || reasonLines.slice(1).join(", "),
       roomHint,
       columnHeader,
       rawText
@@ -892,6 +936,26 @@
       .replace(/^[|.*-]+/, "")
       .replace(/\s+[xX]\s*$/, "")
       .trim();
+  }
+
+  function expandCapturedLine(line) {
+    const text = normalizeCalendarLine(line);
+    if (!text) return [];
+    const expanded = [text];
+    const rangeMatch = text.match(TIME_RANGE_RE);
+    if (rangeMatch?.[0]) {
+      const rest = normalizeSpaces(text.replace(rangeMatch[0], " "));
+      if (rest) expanded.push(rest);
+      return expanded;
+    }
+
+    const leadingTime = text.match(/^\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s+(.+)$/i);
+    if (leadingTime?.[1] && leadingTime?.[2]) {
+      expanded.push(normalizeSpaces(leadingTime[1]));
+      expanded.push(normalizeCalendarLine(leadingTime[2]));
+    }
+
+    return expanded.filter((value, index, all) => value && all.indexOf(value) === index);
   }
 
   function findPatientLineIndex(lines, appointmentTime) {
@@ -929,11 +993,98 @@
   }
 
   function extractDoctorName(line) {
-    return normalizeSpaces(line)
+    let text = normalizeSpaces(line)
       .replace(/^(?:appointment\s+provider|appointment\s+doctor|provider|doctor|dr\.?|dvm|d\.v\.m\.|vet)\s*:?\s*/i, "")
       .replace(/\b(?:appointment\s+provider|appointment\s+doctor|provider|doctor)\b\s*:?\s*/ig, " ")
       .replace(/\s+/g, " ")
       .trim();
+    if (!text) return "";
+    const matches = text.match(/\b(?:dr\.?\s+[a-z][a-z' -]+|[a-z][a-z' -]+,\s*d\.?\s*v\.?\s*m\.?|[a-z][a-z' -]+\s+dvm)\b/ig);
+    if (matches && matches.length) return normalizeSpaces(matches[0]);
+    if (DOCTOR_NAME_RE.test(text) && text.length <= 80) return text;
+    return "";
+  }
+
+  function parsePulseDetails(lines) {
+    const labelMap = {
+      "type": "type",
+      "appointment type": "type",
+      "visit type": "type",
+      "description": "description",
+      "reason": "description",
+      "appointment reason": "description",
+      "status": "status",
+      "appointment provider": "provider",
+      "provider": "provider",
+      "doctor": "provider",
+      "appointment doctor": "provider",
+      "patient": "patient"
+    };
+    const details = {};
+    let currentKey = "";
+
+    asArray(lines).forEach((line) => {
+      const text = normalizeSpaces(line);
+      const normalized = normalizeLoose(text);
+      if (!text || normalized === "visit highlights") return;
+
+      const labelKey = labelMap[normalized];
+      if (labelKey) {
+        currentKey = labelKey;
+        if (!details[currentKey]) details[currentKey] = [];
+        return;
+      }
+
+      const inline = parseInlinePulseDetail(text, labelMap);
+      if (inline) {
+        currentKey = inline.key;
+        if (!details[currentKey]) details[currentKey] = [];
+        details[currentKey].push(inline.value);
+        return;
+      }
+
+      if (!currentKey) return;
+      details[currentKey].push(text);
+    });
+
+    return {
+      type: normalizeSpaces((details.type || []).join(" ")),
+      description: normalizeSpaces((details.description || []).join(" ")),
+      status: normalizeSpaces((details.status || []).join(" ")),
+      provider: extractDoctorName((details.provider || []).join(" ")) || normalizeSpaces((details.provider || []).join(" ")),
+      patient: normalizeSpaces((details.patient || []).join(" "))
+    };
+  }
+
+  function parseInlinePulseDetail(line, labelMap) {
+    const text = normalizeSpaces(line);
+    if (!text) return null;
+    const colonMatch = text.match(/^([^:]{2,40}):\s*(.+)$/);
+    if (colonMatch) {
+      const key = labelMap[normalizeLoose(colonMatch[1])];
+      const value = normalizeSpaces(colonMatch[2]);
+      if (key && value) return { key, value };
+    }
+    const normalized = normalizeLoose(text);
+    for (const rawLabel of Object.keys(labelMap)) {
+      if (!normalized.startsWith(rawLabel + " ")) continue;
+      const value = normalizeSpaces(text.slice(rawLabel.length));
+      if (value) return { key: labelMap[rawLabel], value };
+    }
+    return null;
+  }
+
+  function cleanPulsePatientName(value) {
+    return normalizeSpaces(value).split("(")[0].trim();
+  }
+
+  function isPulseDetailLabelOrValue(line, details) {
+    const normalized = normalizeLoose(line);
+    if (["visit highlights", "type", "appointment type", "visit type", "description", "reason", "appointment reason", "status", "appointment provider", "provider", "doctor", "appointment doctor", "patient"].includes(normalized)) {
+      return true;
+    }
+    return [details.type, details.description, details.status, details.provider, details.patient]
+      .some((value) => value && normalizeLoose(value) === normalized);
   }
 
   function extractRoomHint(values) {
@@ -954,6 +1105,28 @@
       .filter((line) => line.length <= 42)
       .filter((line) => /^(?:tech|surgery|sx|drop\s*off|treatment|triage|isolation|boarding|kennel|exam(?:\s+room)?\s*\d*)$/i.test(line));
     return candidates[0] || "";
+  }
+
+  function inferWorkflowColumnFromText(text) {
+    const normalized = normalizeLoose(text);
+    if (!normalized) return "";
+    if (SURGERY_COLUMN_RE.test(normalized) || /\bsx consult\b|\bsurgery consult\b|\bsurgical\b|\bspay\b|\bneuter\b|\bdental\b/.test(normalized)) return "Surgery";
+    if (TECH_COLUMN_RE.test(normalized) || /\btech appt\b|\bwalk back\b|\bbandage change\b|\bblood draw\b/.test(normalized)) return "Tech";
+    if (DROP_OFF_COLUMN_RE.test(normalized) || /\bday admit\b|\bsample drop off\b/.test(normalized)) return "Drop Off";
+    return "";
+  }
+
+  function chooseBestColumnHeader(primaryHeader, fallbackHeader) {
+    const primary = normalizeSpaces(primaryHeader);
+    const fallback = normalizeSpaces(fallbackHeader);
+    if (looksLikeWorkflowColumnHeader(primary)) return primary;
+    if (looksLikeWorkflowColumnHeader(fallback)) return fallback;
+    return primary || fallback || "";
+  }
+
+  function looksLikeWorkflowColumnHeader(text) {
+    const normalized = normalizeLoose(text);
+    return normalized === "surgery" || normalized === "sx" || normalized === "tech" || normalized === "walk back" || normalized === "walkback" || normalized === "drop off" || normalized === "dropoff";
   }
 
   function isLikelyAppointmentReasonLine(line) {
@@ -1096,6 +1269,12 @@
   }
 
   function findAliasColorLabel(labels, haystack) {
+    for (const mapping of PULSE_TYPE_LABEL_MAP) {
+      if (!mapping.pulse.some((alias) => haystack.includes(normalizeLoose(alias)))) continue;
+      const match = findColorLabelByTerms(labels, mapping.vetboard);
+      if (match) return match;
+    }
+
     for (const group of TYPE_ALIAS_GROUPS) {
       if (!group.aliases.some((alias) => haystack.includes(normalizeLoose(alias)))) continue;
       const match = findColorLabelByTerms(labels, group.labels);

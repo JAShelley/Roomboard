@@ -76,6 +76,7 @@ struct CaptureEvent: Codable {
     let captureMethod: String
     let windowTitle: String
     let processName: String
+    let requiresReview: Bool
     let message: String?
 }
 
@@ -172,17 +173,16 @@ struct RoomBoardCaptureHelper {
 
     private static func inspect(point: CGPoint, type: String) -> CaptureEvent {
         let element = elementAt(point: point)
-        let candidate = chooseCandidate(from: element)
+        let visualCapture = captureScreenPreview(point: point, includeImage: type == "capture", includeText: type == "capture")
+        let candidate = chooseCandidate(near: point, primary: element, visualBounds: visualCapture?.bounds)
         let accessibilityText = candidate.map(buildText) ?? ""
         let accessibilityBounds = candidate.flatMap(readBounds)
-        let visualCapture = captureScreenPreview(point: point, includeImage: type == "capture", includeText: type == "capture")
-        let visualText = normalize(visualCapture?.text)
-        let text = accessibilityText.isEmpty ? visualText : accessibilityText
+        let visualText = normalizeCapturedText(visualCapture?.text)
+        let text = mergeCapturedText(accessibilityText, type == "capture" ? visualText : "")
         let bounds = chooseBestBounds(accessibilityBounds, visualCapture?.bounds)
         let appInfo = candidate.map(readAppInfo) ?? ("", "")
-        let captureMethod = visualCapture?.bounds != nil && shouldPreferVisualBounds(accessibilityBounds, visualCapture?.bounds)
-            ? "mac-visual-block"
-            : "mac-accessibility"
+        let captureMethod = resolveCaptureMethod(accessibilityBounds: accessibilityBounds, visualCapture: visualCapture, text: text)
+        let requiresReview = type == "capture" && (text.isEmpty || scoreAppointmentText(text) < 90)
         let message = text.isEmpty
             ? visualCapture?.bounds != nil
                 ? "Captured appointment block image. Fill any missing fields from the preview."
@@ -204,6 +204,7 @@ struct RoomBoardCaptureHelper {
             captureMethod: captureMethod,
             windowTitle: appInfo.0,
             processName: appInfo.1,
+            requiresReview: requiresReview,
             message: message
         )
     }
@@ -252,6 +253,16 @@ struct RoomBoardCaptureHelper {
         if accessibilityArea > visualArea * 2.5 { return true }
         if accessibilityBounds.width > 900 || accessibilityBounds.height > 420 { return true }
         return false
+    }
+
+    private static func resolveCaptureMethod(accessibilityBounds: Bounds?, visualCapture: VisualCapture?, text: String) -> String {
+        if let visualBounds = visualCapture?.bounds, shouldPreferVisualBounds(accessibilityBounds, visualBounds) {
+            return normalizeCapturedText(visualCapture?.text).isEmpty ? "mac-visual-block" : "mac-visual-block-ocr"
+        }
+        if !normalizeCapturedText(visualCapture?.text).isEmpty && !text.isEmpty {
+            return "mac-accessibility+ocr"
+        }
+        return "mac-accessibility"
     }
 
     private static func detectVisualAppointmentBlock(point: CGPoint, includeImage: Bool, includeText: Bool) -> VisualCapture? {
@@ -579,27 +590,105 @@ struct RoomBoardCaptureHelper {
         return error == .success ? rawElement : nil
     }
 
-    private static func chooseCandidate(from element: AXUIElement?) -> AXUIElement? {
-        guard let element else { return nil }
-
-        var current: AXUIElement? = element
+    private static func chooseCandidate(near point: CGPoint, primary element: AXUIElement?, visualBounds: Bounds?) -> AXUIElement? {
+        let samplePoints = buildCandidateSamplePoints(origin: point, visualBounds: visualBounds)
+        var seen = Set<String>()
         var best: AXUIElement?
         var bestScore = -Double.greatestFiniteMagnitude
-        var depth = 0
 
-        while let candidate = current, depth < 8 {
-            let text = buildText(candidate)
-            let bounds = readBounds(candidate)
-            let score = scoreCandidate(bounds: bounds, text: text, depth: depth)
-            if score > bestScore {
-                best = candidate
-                bestScore = score
+        for sample in samplePoints {
+            let root = (sample.isPrimary && element != nil) ? element : elementAt(point: sample.point)
+            let distancePenalty = sample.distanceFromOrigin * 1.1
+            var current = root
+            var depth = 0
+
+            while let candidate = current, depth < 8 {
+                let text = buildText(candidate)
+                let bounds = readBounds(candidate)
+                let key = candidateKey(bounds: bounds, text: text, depth: depth)
+                let score = scoreCandidate(bounds: bounds, text: text, depth: depth)
+                    + scoreVisualOverlap(bounds: bounds, visualBounds: visualBounds)
+                    - distancePenalty
+                if seen.insert(key).inserted && score > bestScore {
+                    best = candidate
+                    bestScore = score
+                }
+                current = parent(of: candidate)
+                depth += 1
             }
-            current = parent(of: candidate)
-            depth += 1
         }
 
         return best ?? element
+    }
+
+    private static func buildCandidateSamplePoints(origin: CGPoint, visualBounds: Bounds?) -> [(point: CGPoint, distanceFromOrigin: Double, isPrimary: Bool)] {
+        var samples: [(point: CGPoint, distanceFromOrigin: Double, isPrimary: Bool)] = []
+        var seen = Set<String>()
+
+        func add(_ samplePoint: CGPoint, isPrimary: Bool = false) {
+            let key = "\(samplePoint.x.rounded()),\(samplePoint.y.rounded())"
+            guard seen.insert(key).inserted else { return }
+            let dx = samplePoint.x - origin.x
+            let dy = samplePoint.y - origin.y
+            samples.append((samplePoint, Double(sqrt(dx * dx + dy * dy)), isPrimary))
+        }
+
+        add(origin, isPrimary: true)
+        let offsets: [(CGFloat, CGFloat)] = [
+            (-28.0, 0.0), (28.0, 0.0), (0.0, -28.0), (0.0, 28.0),
+            (-28.0, -28.0), (28.0, -28.0), (-28.0, 28.0), (28.0, 28.0),
+            (-54.0, 0.0), (54.0, 0.0), (0.0, -54.0), (0.0, 54.0)
+        ]
+        for (offsetX, offsetY) in offsets {
+            add(CGPoint(x: origin.x + offsetX, y: origin.y + offsetY))
+        }
+
+        if let visualBounds {
+            let left = CGFloat(visualBounds.left)
+            let top = CGFloat(visualBounds.top)
+            let right = CGFloat(visualBounds.left + visualBounds.width)
+            let bottom = CGFloat(visualBounds.top + visualBounds.height)
+            let center = CGPoint(x: (left + right) / 2, y: (top + bottom) / 2)
+            add(center)
+            add(CGPoint(x: min(right - 8, left + 18), y: min(bottom - 8, top + 18)))
+            add(CGPoint(x: max(left + 8, right - 18), y: min(bottom - 8, top + 18)))
+            add(CGPoint(x: min(right - 8, left + 18), y: max(top + 8, bottom - 18)))
+            add(CGPoint(x: max(left + 8, right - 18), y: max(top + 8, bottom - 18)))
+        }
+
+        return samples
+    }
+
+    private static func scoreVisualOverlap(bounds: Bounds?, visualBounds: Bounds?) -> Double {
+        guard let bounds, let visualBounds else { return 0 }
+        let left = max(bounds.left, visualBounds.left)
+        let top = max(bounds.top, visualBounds.top)
+        let right = min(bounds.left + bounds.width, visualBounds.left + visualBounds.width)
+        let bottom = min(bounds.top + bounds.height, visualBounds.top + visualBounds.height)
+        let overlapWidth = max(0, right - left)
+        let overlapHeight = max(0, bottom - top)
+        let overlapArea = overlapWidth * overlapHeight
+        guard overlapArea > 0 else { return 0 }
+        let boundsArea = max(1, bounds.width * bounds.height)
+        let visualArea = max(1, visualBounds.width * visualBounds.height)
+        let overlapRatio = overlapArea / min(boundsArea, visualArea)
+        return 120 * min(1, overlapRatio)
+    }
+
+    private static func candidateKey(bounds: Bounds?, text: String, depth: Int) -> String {
+        let normalizedText = normalize(text)
+        let prefix = String(normalizedText.prefix(120))
+        if let bounds {
+            return [
+                String(bounds.left.rounded()),
+                String(bounds.top.rounded()),
+                String(bounds.width.rounded()),
+                String(bounds.height.rounded()),
+                String(depth),
+                prefix
+            ].joined(separator: "|")
+        }
+        return ["no-bounds", String(depth), prefix].joined(separator: "|")
     }
 
     private static func scoreCandidate(bounds: Bounds?, text: String, depth: Int) -> Double {
@@ -610,10 +699,49 @@ struct RoomBoardCaptureHelper {
             return -3000 - Double(depth)
         }
 
-        let textScore = Double(min(text.count, 260)) * 3
+        let normalizedText = normalizeCapturedText(text)
+        let textScore = Double(min(normalize(normalizedText).count, 260)) * 2.4
         let area = max(1, bounds.width * bounds.height)
         let areaScore = -abs(log(area) - log(42000)) * 35
-        return textScore + areaScore - Double(depth * 18)
+        let appointmentScore = scoreAppointmentText(normalizedText)
+        let scheduleContainerPenalty = looksLikeScheduleContainer(normalizedText, bounds: bounds) ? 260.0 : 0.0
+        return textScore + appointmentScore + areaScore - Double(depth * 18) - scheduleContainerPenalty
+    }
+
+    private static func scoreAppointmentText(_ text: String) -> Double {
+        guard !text.isEmpty else { return 0 }
+        var score = 0.0
+        if matches(text, #"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)\b"#) {
+            score += 180
+        } else if matches(text, #"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b"#) {
+            score += 95
+        }
+        if matches(text, #"\b(?:appointment\s+provider|appointment\s+doctor|provider|doctor|dr\.?|dvm|d\.v\.m\.|vet)\b"#) { score += 90 }
+        if matches(text, #"\b(?:type|appointment type|visit type|description|reason|status|visit highlights|patient)\b"#) { score += 70 }
+        if matches(text, #"^\W*\([A-Z?]\s*,?\s*\d{0,3}\)"#) { score += 120 }
+        if matches(text, #"\b(?:exam|recheck|surgery|surgical|sx|tech|walk ?back|drop ?off|euthanasia|illness|injury|vaccine|ultrasound|bandage)\b"#) { score += 75 }
+
+        let lines = text.split(separator: "\n").map(String.init)
+        if lines.count >= 2 && lines.count <= 12 { score += 55 }
+        if lines.count > 24 { score -= 160 }
+        if text.count > 700 { score -= 180 }
+        return score
+    }
+
+    private static func looksLikeScheduleContainer(_ text: String, bounds: Bounds) -> Bool {
+        if text.count < 700 && bounds.width < 850 && bounds.height < 420 { return false }
+        let timeCount = matchCount(text, #"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b"#)
+        return timeCount >= 5 || text.split(separator: "\n").count > 24
+    }
+
+    private static func matches(_ text: String, _ pattern: String) -> Bool {
+        text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    private static func matchCount(_ text: String, _ pattern: String) -> Int {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return 0 }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.numberOfMatches(in: text, options: [], range: range)
     }
 
     private static func buildText(_ element: AXUIElement) -> String {
@@ -756,6 +884,30 @@ struct RoomBoardCaptureHelper {
     private static func normalize(_ value: String?) -> String {
         guard let value else { return "" }
         return value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    private static func normalizeCapturedText(_ value: String?) -> String {
+        guard let value else { return "" }
+        let normalized = value
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n")
+            .map { normalize(String($0)) }
+            .filter { !$0.isEmpty }
+        return normalized.joined(separator: "\n")
+    }
+
+    private static func mergeCapturedText(_ values: String?...) -> String {
+        var seen = Set<String>()
+        var lines: [String] = []
+        for value in values {
+            for line in normalizeCapturedText(value).split(separator: "\n").map(String.init) {
+                let key = line.lowercased()
+                guard seen.insert(key).inserted else { continue }
+                lines.append(line)
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     private static func write<T: Encodable>(_ payload: T) {

@@ -557,11 +557,13 @@
       var wrap = $("displayWrap");
       activeDisplayFitFrame = 0;
       if(wrap) wrap.classList.remove("activeDisplayFitWrap");
+      if(wrap) wrap.style.removeProperty("overflow");
       if(!grid) return;
       grid.classList.remove("activeDisplayFit");
       grid.classList.remove("activeDisplayFitSingle");
       grid.style.removeProperty("--activeFitCols");
       grid.style.removeProperty("--activeFitGap");
+      grid.style.removeProperty("--activeFitSingleWidth");
       grid.style.removeProperty("transform");
       grid.style.removeProperty("width");
     }
@@ -628,6 +630,7 @@
       grid.classList.add("activeDisplayFit");
       grid.classList.toggle("activeDisplayFitSingle", singleActiveRoom);
       wrap.classList.add("activeDisplayFitWrap");
+      wrap.style.removeProperty("overflow");
       grid.style.removeProperty("transform");
       grid.style.removeProperty("width");
 
@@ -644,11 +647,20 @@
       grid.style.setProperty("--activeFitSingleWidth", singleCardWidth.toFixed(4) + "px");
 
       var contentHeight = Math.max(1, grid.scrollHeight || grid.getBoundingClientRect().height || 1);
-      var scale = Math.min(1, (availableHeight - 2) / contentHeight);
-      scale = Math.max(0.28, scale);
+      var rawScale = (availableHeight - 2) / contentHeight;
+      var maxScale = singleActiveRoom ? 1.35 : 1.18;
+      var minimumReadableScale = rooms.length <= 4 ? 0.78 : (rooms.length <= 8 ? 0.66 : 0.56);
+      var scale = Math.min(maxScale, rawScale);
+      var needsScroll = false;
+      if(scale < minimumReadableScale){
+        scale = minimumReadableScale;
+        needsScroll = true;
+      }
       grid.style.transform = "scale(" + scale.toFixed(4) + ")";
+      wrap.style.overflow = needsScroll ? "auto" : "hidden";
       if(singleActiveRoom){
-        grid.style.width = Math.min(singleCardWidth / scale, availableWidth / scale).toFixed(4) + "px";
+        var singleVisualWidth = Math.min(availableWidth, Math.max(singleCardWidth, availableWidth * 0.72));
+        grid.style.width = Math.min(singleVisualWidth / scale, availableWidth / scale).toFixed(4) + "px";
       } else {
         grid.style.width = (100 / scale).toFixed(4) + "%";
       }

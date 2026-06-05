@@ -5,6 +5,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Automation;
 using Forms = System.Windows.Forms;
@@ -23,6 +24,50 @@ internal static class Program
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
+    private const string WindowsOcrPowerShellScript = @"
+param(
+  [string]$ImagePath
+)
+
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType=WindowsRuntime]
+$null = [Windows.Storage.Streams.IRandomAccessStream, Windows.Storage.Streams, ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.SoftwareBitmap, Windows.Graphics.Imaging, ContentType=WindowsRuntime]
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType=WindowsRuntime]
+$null = [Windows.Media.Ocr.OcrResult, Windows.Foundation, ContentType=WindowsRuntime]
+
+function AwaitOperation($Operation, [Type]$ResultType) {
+  $method = [System.WindowsRuntimeSystemExtensions].GetMethods() |
+    Where-Object {
+      $_.Name -eq 'AsTask' -and
+      $_.GetParameters().Length -eq 1 -and
+      $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    } |
+    Select-Object -First 1
+  $task = $method.MakeGenericMethod($ResultType).Invoke($null, @($Operation))
+  $task.Wait()
+  return $task.Result
+}
+
+$file = AwaitOperation ([Windows.Storage.StorageFile]::GetFileFromPathAsync($ImagePath)) ([Windows.Storage.StorageFile])
+$stream = AwaitOperation ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+try {
+  $decoder = AwaitOperation ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+  $bitmap = AwaitOperation ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+  if ($bitmap.BitmapPixelFormat -ne [Windows.Graphics.Imaging.BitmapPixelFormat]::Gray8 -and
+      $bitmap.BitmapPixelFormat -ne [Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8) {
+    $bitmap = [Windows.Graphics.Imaging.SoftwareBitmap]::Convert($bitmap, [Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8)
+  }
+  $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+  if ($null -eq $engine) { exit 0 }
+  $result = AwaitOperation ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+  $result.Lines | ForEach-Object { $_.Text }
+} finally {
+  if ($null -ne $stream) { $stream.Dispose() }
+}
+";
 
     [STAThread]
     public static int Main(string[] args)
@@ -156,11 +201,15 @@ internal static class Program
             // Some elevated or remote windows do not expose automation data.
         }
 
-        var candidate = ChooseCandidate(element);
-        var text = candidate != null ? BuildElementText(candidate) : "";
-        var automationBounds = candidate != null ? ToBounds(candidate.Current.BoundingRectangle) : null;
+        var candidate = ChooseCandidateNearPoint(x, y, element, visualCandidate?.Bounds);
+        var text = MergeCapturedText(
+            candidate != null ? BuildElementText(candidate) : "",
+            type == "capture" ? visualCandidate?.Text : ""
+        );
+        var automationBounds = candidate != null ? ToBounds(SafeBoundingRectangle(candidate)) : null;
         var bounds = ChooseBestBounds(automationBounds, visualCandidate?.Bounds);
         var windowInfo = GetWindowInfoFromPoint(x, y);
+        var requiresReview = type == "capture" && (text.Length == 0 || ScoreAppointmentText(text) < 90);
 
         return new CaptureEvent
         {
@@ -175,11 +224,10 @@ internal static class Program
             Bounds = bounds,
             VisualBounds = visualCandidate?.Bounds,
             ImageDataUrl = visualCandidate?.ImageDataUrl,
-            CaptureMethod = visualCandidate?.Bounds != null && ShouldPreferVisualBounds(automationBounds, visualCandidate.Bounds)
-                ? "visual-block"
-                : "ui-automation",
+            CaptureMethod = ResolveCaptureMethod(automationBounds, visualCandidate, text),
             WindowTitle = windowInfo.Title,
             ProcessName = windowInfo.ProcessName,
+            RequiresReview = requiresReview,
             Message = text.Length > 0
                 ? null
                 : visualCandidate?.Bounds != null
@@ -207,25 +255,118 @@ internal static class Program
         return false;
     }
 
-    private static AutomationElement? ChooseCandidate(AutomationElement? element)
+    private static string ResolveCaptureMethod(BoundsDto? automationBounds, VisualCandidate? visualCandidate, string text)
     {
-        if (element == null) return null;
+        if (visualCandidate?.Bounds != null && ShouldPreferVisualBounds(automationBounds, visualCandidate.Bounds))
+        {
+            return string.IsNullOrWhiteSpace(visualCandidate.Text) ? "visual-block" : "visual-block-ocr";
+        }
 
-        AutomationElement? current = element;
+        if (!string.IsNullOrWhiteSpace(visualCandidate?.Text) && !string.IsNullOrWhiteSpace(text))
+        {
+            return "ui-automation+ocr";
+        }
+
+        return "ui-automation";
+    }
+
+    private static AutomationElement? ChooseCandidateNearPoint(int x, int y, AutomationElement? primaryElement, BoundsDto? visualBounds)
+    {
+        var samplePoints = BuildCandidateSamplePoints(x, y, visualBounds);
+        var seen = new HashSet<string>();
         AutomationElement? best = null;
         var bestScore = double.NegativeInfinity;
+
+        foreach (var sample in samplePoints)
+        {
+            AutomationElement? element = null;
+            if (sample.IsPrimary && primaryElement != null)
+            {
+                element = primaryElement;
+            }
+            else
+            {
+                try
+                {
+                    element = AutomationElement.FromPoint(new System.Windows.Point(sample.X, sample.Y));
+                }
+                catch
+                {
+                    element = null;
+                }
+            }
+
+            var distancePenalty = sample.DistanceFromOrigin * 1.1;
+            foreach (var scored in ScoreCandidateChain(element, visualBounds, distancePenalty))
+            {
+                if (!seen.Add(scored.Key)) continue;
+                if (scored.Score <= bestScore) continue;
+                bestScore = scored.Score;
+                best = scored.Element;
+            }
+        }
+
+        return best ?? primaryElement;
+    }
+
+    private static List<CandidateSamplePoint> BuildCandidateSamplePoints(int x, int y, BoundsDto? visualBounds)
+    {
+        var samples = new List<CandidateSamplePoint>();
+        var seen = new HashSet<string>();
+
+        void Add(int sampleX, int sampleY, bool isPrimary = false)
+        {
+            var key = $"{sampleX},{sampleY}";
+            if (!seen.Add(key)) return;
+            var dx = sampleX - x;
+            var dy = sampleY - y;
+            samples.Add(new CandidateSamplePoint(sampleX, sampleY, Math.Sqrt((double)dx * dx + (double)dy * dy), isPrimary));
+        }
+
+        Add(x, y, isPrimary: true);
+        foreach (var offset in new (int X, int Y)[]
+        {
+            (-28, 0), (28, 0), (0, -28), (0, 28),
+            (-28, -28), (28, -28), (-28, 28), (28, 28),
+            (-54, 0), (54, 0), (0, -54), (0, 54)
+        })
+        {
+            Add(x + offset.X, y + offset.Y);
+        }
+
+        if (visualBounds != null)
+        {
+            var left = (int)Math.Round(visualBounds.Left);
+            var top = (int)Math.Round(visualBounds.Top);
+            var right = (int)Math.Round(visualBounds.Left + visualBounds.Width);
+            var bottom = (int)Math.Round(visualBounds.Top + visualBounds.Height);
+            var centerX = (left + right) / 2;
+            var centerY = (top + bottom) / 2;
+            Add(centerX, centerY);
+            Add(Math.Min(right - 8, left + 18), Math.Min(bottom - 8, top + 18));
+            Add(Math.Max(left + 8, right - 18), Math.Min(bottom - 8, top + 18));
+            Add(Math.Min(right - 8, left + 18), Math.Max(top + 8, bottom - 18));
+            Add(Math.Max(left + 8, right - 18), Math.Max(top + 8, bottom - 18));
+        }
+
+        return samples;
+    }
+
+    private static IEnumerable<ScoredAutomationCandidate> ScoreCandidateChain(AutomationElement? element, BoundsDto? visualBounds, double distancePenalty)
+    {
+        if (element == null) yield break;
+
+        AutomationElement? current = element;
 
         for (var depth = 0; depth < 8 && current != null; depth += 1)
         {
             var rect = SafeBoundingRectangle(current);
             var text = BuildElementText(current);
-            var score = ScoreCandidate(rect, text, depth);
-
-            if (score > bestScore)
-            {
-                best = current;
-                bestScore = score;
-            }
+            var score = ScoreCandidate(rect, text, depth)
+                + ScoreVisualOverlap(rect, visualBounds)
+                - distancePenalty;
+            var key = BuildCandidateKey(rect, text, depth);
+            yield return new ScoredAutomationCandidate(current, score, key);
 
             try
             {
@@ -236,8 +377,36 @@ internal static class Program
                 break;
             }
         }
+    }
 
-        return best ?? element;
+    private static double ScoreVisualOverlap(Rect rect, BoundsDto? visualBounds)
+    {
+        if (rect.IsEmpty || visualBounds == null) return 0;
+        var left = Math.Max(rect.Left, visualBounds.Left);
+        var top = Math.Max(rect.Top, visualBounds.Top);
+        var right = Math.Min(rect.Right, visualBounds.Left + visualBounds.Width);
+        var bottom = Math.Min(rect.Bottom, visualBounds.Top + visualBounds.Height);
+        var overlapWidth = Math.Max(0, right - left);
+        var overlapHeight = Math.Max(0, bottom - top);
+        var overlapArea = overlapWidth * overlapHeight;
+        if (overlapArea <= 0) return 0;
+        var rectArea = Math.Max(1, rect.Width * rect.Height);
+        var visualArea = Math.Max(1, visualBounds.Width * visualBounds.Height);
+        var overlapRatio = overlapArea / Math.Min(rectArea, visualArea);
+        return 120 * Math.Min(1, overlapRatio);
+    }
+
+    private static string BuildCandidateKey(Rect rect, string text, int depth)
+    {
+        var normalizedText = NormalizeSpaces(text);
+        return string.Join("|",
+            Math.Round(rect.Left),
+            Math.Round(rect.Top),
+            Math.Round(rect.Width),
+            Math.Round(rect.Height),
+            depth,
+            normalizedText.Length > 120 ? normalizedText[..120] : normalizedText
+        );
     }
 
     private static double ScoreCandidate(Rect rect, string text, int depth)
@@ -245,11 +414,54 @@ internal static class Program
         if (rect.IsEmpty || rect.Width < 24 || rect.Height < 16) return double.NegativeInfinity;
         if (rect.Width > 1200 || rect.Height > 520) return -3000 - depth;
 
-        var textLength = Math.Min(260, text.Length);
+        var normalizedText = NormalizeCapturedText(text);
+        var textLength = Math.Min(260, NormalizeSpaces(normalizedText).Length);
         var area = rect.Width * rect.Height;
         var targetAreaScore = -Math.Abs(Math.Log(Math.Max(1, area)) - Math.Log(42000)) * 35;
         var depthPenalty = depth * 18;
-        return textLength * 3 + targetAreaScore - depthPenalty;
+        var appointmentScore = ScoreAppointmentText(normalizedText);
+        var scheduleContainerPenalty = LooksLikeScheduleContainer(normalizedText, rect) ? 260 : 0;
+        return textLength * 2.4 + appointmentScore + targetAreaScore - depthPenalty - scheduleContainerPenalty;
+    }
+
+    private static double ScoreAppointmentText(string text)
+    {
+        if (text.Length == 0) return 0;
+        var score = 0.0;
+        if (Regex.IsMatch(text, @"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*[-–]\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", RegexOptions.IgnoreCase)) score += 180;
+        else if (Regex.IsMatch(text, @"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", RegexOptions.IgnoreCase)) score += 95;
+        if (Regex.IsMatch(text, @"\b(?:appointment\s+provider|appointment\s+doctor|provider|doctor|dr\.?|dvm|d\.v\.m\.|vet)\b", RegexOptions.IgnoreCase)) score += 90;
+        if (Regex.IsMatch(text, @"\b(?:type|appointment type|visit type|description|reason|status|visit highlights|patient)\b", RegexOptions.IgnoreCase)) score += 70;
+        if (Regex.IsMatch(text, @"^\W*\([A-Z?]\s*,?\s*\d{0,3}\)", RegexOptions.IgnoreCase)) score += 120;
+        if (Regex.IsMatch(text, @"\b(?:exam|recheck|surgery|surgical|sx|tech|walk ?back|drop ?off|euthanasia|illness|injury|vaccine|ultrasound|bandage)\b", RegexOptions.IgnoreCase)) score += 75;
+
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length >= 2 && lines.Length <= 12) score += 55;
+        if (lines.Length > 24) score -= 160;
+        if (text.Length > 700) score -= 180;
+        return score;
+    }
+
+    private static bool LooksLikeScheduleContainer(string text, Rect rect)
+    {
+        if (text.Length < 700 && rect.Width < 850 && rect.Height < 420) return false;
+        var timeCount = Regex.Matches(text, @"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b", RegexOptions.IgnoreCase).Count;
+        return timeCount >= 5 || text.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length > 24;
+    }
+
+    private static string MergeCapturedText(params string?[] values)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var lines = new List<string>();
+        foreach (var value in values)
+        {
+            foreach (var line in NormalizeCapturedText(value).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (seen.Add(line)) lines.Add(line);
+            }
+        }
+
+        return string.Join("\n", lines).Trim();
     }
 
     private static VisualCandidate? TryDetectVisualAppointmentBlock(int screenX, int screenY, bool includeImage)
@@ -307,7 +519,8 @@ internal static class Program
             return new VisualCandidate
             {
                 Bounds = bounds,
-                ImageDataUrl = includeImage ? CropAsDataUrl(screenBitmap, left, top, width, height) : null
+                ImageDataUrl = includeImage ? CropAsDataUrl(screenBitmap, left, top, width, height) : null,
+                Text = includeImage ? RecognizeTextFromCrop(screenBitmap, left, top, width, height) : ""
             };
         }
         catch
@@ -597,6 +810,95 @@ internal static class Program
         catch
         {
             return null;
+        }
+    }
+
+    private static string RecognizeTextFromCrop(Bitmap source, int left, int top, int width, int height)
+    {
+        var tempImagePath = Path.Combine(Path.GetTempPath(), $"roomboard-capture-{Guid.NewGuid():N}.png");
+        try
+        {
+            var paddedLeft = Math.Max(0, left - 3);
+            var paddedTop = Math.Max(0, top - 3);
+            var paddedRight = Math.Min(source.Width, left + width + 3);
+            var paddedBottom = Math.Min(source.Height, top + height + 3);
+            var cropRect = new DrawingRectangle(paddedLeft, paddedTop, paddedRight - paddedLeft, paddedBottom - paddedTop);
+            using (var crop = source.Clone(cropRect, PixelFormat.Format32bppArgb))
+            {
+                crop.Save(tempImagePath, ImageFormat.Png);
+            }
+
+            return RunWindowsOcr(tempImagePath);
+        }
+        catch
+        {
+            return "";
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(tempImagePath)) File.Delete(tempImagePath);
+            }
+            catch
+            {
+                // Best-effort cleanup only.
+            }
+        }
+    }
+
+    private static string RunWindowsOcr(string imagePath)
+    {
+        var powerShellPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe"
+        );
+        if (!File.Exists(powerShellPath)) powerShellPath = "powershell.exe";
+
+        var scriptPath = Path.Combine(Path.GetTempPath(), $"roomboard-ocr-{Guid.NewGuid():N}.ps1");
+        try
+        {
+            File.WriteAllText(scriptPath, WindowsOcrPowerShellScript, Encoding.UTF8);
+            using var process = new Process();
+            process.StartInfo.FileName = powerShellPath;
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.ArgumentList.Add("-NoProfile");
+            process.StartInfo.ArgumentList.Add("-ExecutionPolicy");
+            process.StartInfo.ArgumentList.Add("Bypass");
+            process.StartInfo.ArgumentList.Add("-File");
+            process.StartInfo.ArgumentList.Add(scriptPath);
+            process.StartInfo.ArgumentList.Add("-ImagePath");
+            process.StartInfo.ArgumentList.Add(imagePath);
+
+            process.Start();
+            if (!process.WaitForExit(4500))
+            {
+                try { process.Kill(entireProcessTree: true); } catch {}
+                return "";
+            }
+
+            if (process.ExitCode != 0) return "";
+            return NormalizeCapturedText(process.StandardOutput.ReadToEnd());
+        }
+        catch
+        {
+            return "";
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(scriptPath)) File.Delete(scriptPath);
+            }
+            catch
+            {
+                // Best-effort cleanup only.
+            }
         }
     }
 
@@ -904,6 +1206,20 @@ internal static class Program
         return string.Join(" ", value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).Trim();
     }
 
+    private static string NormalizeCapturedText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        return string.Join(
+            "\n",
+            value
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n')
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(NormalizeSpaces)
+                .Where(line => line.Length > 0)
+        ).Trim();
+    }
+
     private static void WriteEvent(CaptureEvent payload)
     {
         Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
@@ -948,6 +1264,7 @@ internal sealed class CaptureEvent
     public string CaptureMethod { get; set; } = "";
     public string WindowTitle { get; set; } = "";
     public string ProcessName { get; set; } = "";
+    public bool RequiresReview { get; set; }
     public string? Message { get; set; }
 }
 
@@ -955,7 +1272,12 @@ internal sealed class VisualCandidate
 {
     public BoundsDto? Bounds { get; set; }
     public string? ImageDataUrl { get; set; }
+    public string Text { get; set; } = "";
 }
+
+internal sealed record ScoredAutomationCandidate(AutomationElement Element, double Score, string Key);
+
+internal sealed record CandidateSamplePoint(int X, int Y, double DistanceFromOrigin, bool IsPrimary);
 
 internal sealed record ColorSample(int X, int Y, Color Color);
 
