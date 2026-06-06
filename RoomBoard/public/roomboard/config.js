@@ -13,6 +13,9 @@ window.__ROOMBOARD_RELEASE_BASE_URL__ =
   window.__ROOMBOARD_RELEASE_BASE_URL__ ||
   "https://github.com/JAShelley/Roomboard/releases/download/" +
     window.__ROOMBOARD_RELEASE_TAG__;
+window.__ROOMBOARD_RELEASES_URL__ =
+  window.__ROOMBOARD_RELEASES_URL__ ||
+  "https://github.com/JAShelley/Roomboard/releases";
 window.__ROOMBOARD_CAPTURE_RELEASE_TAG__ =
   window.__ROOMBOARD_CAPTURE_RELEASE_TAG__ || "capture-v0.1.5";
 window.__ROOMBOARD_CAPTURE_RELEASE_BASE_URL__ =
@@ -24,6 +27,8 @@ window.__ROOMBOARD_WINDOWS_DOWNLOAD_URL__ =
   window.__ROOMBOARD_RELEASE_BASE_URL__ + "/RoomBoard-Setup-Windows-x64.exe";
 window.__ROOMBOARD_WINDOWS_DOWNLOAD_FILENAME__ =
   window.__ROOMBOARD_WINDOWS_DOWNLOAD_FILENAME__ || "RoomBoard-Setup-Windows-x64.exe";
+window.__ROOMBOARD_WINDOWS_RELEASE_URL__ =
+  window.__ROOMBOARD_WINDOWS_RELEASE_URL__ || window.__ROOMBOARD_RELEASES_URL__;
 window.__ROOMBOARD_MAC_DOWNLOAD_URL__ =
   window.__ROOMBOARD_MAC_DOWNLOAD_URL__ ||
   window.__ROOMBOARD_RELEASE_BASE_URL__ + "/RoomBoard-macOS.dmg";

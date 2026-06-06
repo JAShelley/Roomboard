@@ -1,8 +1,9 @@
-RoomBoard Capture installers go in this folder when the website is hosted as a static site.
+RoomBoard desktop and capture installers can go in this folder when the website is hosted as a static site.
 
 Expected filenames:
 
+- `RoomBoard-Setup-Windows-x64.exe`
 - `RoomBoard-Capture-Setup-Windows-x64.exe`
 - `RoomBoard-Capture-macOS.dmg`
 
-The download cards in the RoomBoard website check these paths before showing the buttons, so the buttons stay hidden until the installer files exist.
+The download cards in the RoomBoard website check local installer paths before showing direct buttons, and can fall back to GitHub Releases when release URLs are configured.
