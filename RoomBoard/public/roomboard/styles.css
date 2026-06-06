@@ -461,7 +461,7 @@
     #displayGrid.boxView.activeDisplayFit{
       grid-template-columns: repeat(var(--activeFitCols, var(--cols)), minmax(260px, 1fr));
       gap:var(--activeFitGap, 14px);
-      align-items:start;
+      align-items:stretch;
       transform-origin:top left;
       will-change:transform;
     }
