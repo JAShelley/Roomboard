@@ -77,6 +77,9 @@
       }catch(e){}
       var checkbox = $("rememberMe");
       if(checkbox) checkbox.checked = !!enabled;
+      try{
+        syncAuthStoragePreference();
+      }catch(e){}
     }
 
     function getPreferredAuthStorage(){
@@ -87,11 +90,28 @@
       }
     }
 
+    function getFallbackAuthStorage(){
+      try{
+        return getRememberMePreference() ? window.sessionStorage : window.localStorage;
+      }catch(e){
+        return window.sessionStorage;
+      }
+    }
+
     function createAuthStorageAdapter(){
       return {
         getItem: function(key){
           try{
-            return getPreferredAuthStorage().getItem(key);
+            var preferred = getPreferredAuthStorage();
+            var raw = preferred.getItem(key);
+            if(raw != null) return raw;
+            var fallback = getFallbackAuthStorage();
+            raw = fallback.getItem(key);
+            if(raw != null && key === AUTH_STORAGE_KEY){
+              preferred.setItem(key, raw);
+              fallback.removeItem(key);
+            }
+            return raw;
           }catch(e){
             return null;
           }
@@ -99,6 +119,7 @@
         setItem: function(key, value){
           try{
             getPreferredAuthStorage().setItem(key, value);
+            getFallbackAuthStorage().removeItem(key);
           }catch(e){}
         },
         removeItem: function(key){
@@ -113,10 +134,10 @@
     }
 
     function syncAuthStoragePreference(){
-      var remember = getRememberMePreference();
-      var source = remember ? window.sessionStorage : window.localStorage;
-      var target = remember ? window.localStorage : window.sessionStorage;
       try{
+        var remember = getRememberMePreference();
+        var source = remember ? window.sessionStorage : window.localStorage;
+        var target = remember ? window.localStorage : window.sessionStorage;
         var raw = source.getItem(AUTH_STORAGE_KEY);
         if(raw){
           target.setItem(AUTH_STORAGE_KEY, raw);
