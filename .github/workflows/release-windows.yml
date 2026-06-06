@@ -17,6 +17,8 @@ permissions:
 jobs:
   release-windows:
     runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
     steps:
       - name: Check out repository
@@ -28,6 +30,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: RoomBoard/package-lock.json
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
 
       - name: Install dependencies
         working-directory: RoomBoard
@@ -42,7 +49,10 @@ jobs:
       - name: Build Windows installer
         working-directory: RoomBoard
         shell: bash
-        run: npm run desktop:dist:win
+        run: |
+          npm run desktop:assets
+          npm run capture:helper:build
+          npx electron-builder --config electron-builder.windows.json --win nsis
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

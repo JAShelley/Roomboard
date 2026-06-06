@@ -60,11 +60,15 @@ npm run desktop:assets
 npm run desktop:dev
 ```
 
-To create a Windows installer from a Windows machine:
+To create a Windows installer from a Windows machine with Node.js and the .NET 8 SDK installed:
 
 ```bash
-npm run desktop:dist:win
+npm run desktop:assets
+npm run capture:helper:build
+npx electron-builder --config electron-builder.windows.json --win nsis
 ```
+
+That full Windows app build includes the Windows capture helper, so the tray capture path is available inside the normal RoomBoard app instead of only in the standalone capture app.
 
 To create a signed and notarized Mac installer from a Mac with Apple Developer ID credentials:
 
@@ -114,6 +118,7 @@ Source:
 - `desktop/capture-ui.html`: login, capture, review, and send UI
 - `desktop/capture-helper`: Windows UI Automation and visual-block helper used to inspect the scheduler element under the cursor
 - `desktop/capture-helper-mac`: Mac Accessibility helper used to inspect the scheduler element under the cursor
+- `electron-builder.windows.json`: full RoomBoard Windows installer config with the Windows capture helper bundled
 - `electron-builder.capture.json`: Windows installer config
 - `electron-builder.capture.mac.json`: Mac installer config
 

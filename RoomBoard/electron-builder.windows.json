@@ -1,0 +1,55 @@
+{
+  "appId": "com.roomboard.desktop",
+  "artifactName": "RoomBoard-Setup-Windows-x64.${ext}",
+  "directories": {
+    "buildResources": "build",
+    "output": "dist"
+  },
+  "productName": "RoomBoard",
+  "asar": true,
+  "extraMetadata": {
+    "main": "desktop/main.cjs",
+    "name": "roomboard",
+    "description": "Desktop RoomBoard app for clinic room status display, workflow updates, and appointment capture.",
+    "dependencies": {}
+  },
+  "files": [
+    "desktop/**/*",
+    "public/roomboard/**/*",
+    "package.json",
+    "!node_modules/**",
+    "!**/node_modules/**",
+    "!desktop/capture-helper/**/bin/**",
+    "!desktop/capture-helper/**/obj/**",
+    "!desktop/capture-helper-mac/.build/**"
+  ],
+  "extraResources": [
+    {
+      "from": "build/icon.png",
+      "to": "tray-icon.png"
+    },
+    {
+      "from": "desktop/capture-helper/bin/Release/net8.0-windows/win-x64/publish",
+      "to": "capture-helper-windows",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "allowToChangeInstallationDirectory": true,
+    "oneClick": false,
+    "perMachine": false
+  }
+}
