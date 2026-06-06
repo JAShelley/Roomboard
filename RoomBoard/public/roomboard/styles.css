@@ -86,6 +86,9 @@
     body.displayTabActive{
       overflow:hidden;
     }
+    body.displayTabActive header{
+      --displayHeaderControlHeight: clamp(34px, 5.2vh, 46px);
+    }
 	    header{
 	      position:sticky; top:0; z-index:10;
 	      backdrop-filter: blur(10px);
@@ -101,6 +104,14 @@
       align-items:flex-start;
       justify-content:space-between;
       gap:14px;
+    }
+    body.displayTabActive .bar{
+      max-width:none;
+      width:100%;
+      min-height:var(--displayHeaderControlHeight);
+      padding:clamp(2px, .7vh, 8px) clamp(8px, 1.1vw, 16px) clamp(2px, .5vh, 7px);
+      align-items:center;
+      gap:clamp(8px, 1.2vw, 14px);
     }
     html.boardFullscreen .bar,
     html.boardFullscreen main{
@@ -125,11 +136,14 @@
       font-size:clamp(32px, 4vw, 46px);
       font-weight:800;
       font-style:italic;
-      letter-spacing:-.06em;
+      letter-spacing:0;
       line-height:.9;
       color:var(--text);
       text-shadow:0 8px 18px rgba(0,0,0,.28);
       white-space:nowrap;
+    }
+    body.displayTabActive .brandWordmark{
+      font-size:clamp(25px, min(3.4vw, 7vh), 44px);
     }
     #brandLogoImage{
       display:block;
@@ -159,12 +173,26 @@
       white-space:nowrap;
       box-shadow: 0 8px 18px rgba(0,0,0,.18);
     }
+    body.displayTabActive #authBanner{
+      min-height:clamp(18px, 2.6vh, 22px);
+      padding:3px 7px;
+      font-size:clamp(8px, 1.25vh, 10px);
+      letter-spacing:0;
+    }
     #authBanner[hidden]{
       display:none !important;
     }
     #statusLine{color:var(--muted); font-size:10px; line-height:1; margin-left:2px; margin-top:-1px}
     .right{display:flex; gap:6px; align-items:stretch; flex-wrap:wrap; justify-content:flex-end; padding-top:2px;}
     .right > :is(.chip, .tabs, .btn, .iconBtn, .headerSelectWrap, .headerToggleWrap){min-height:46px;}
+    body.displayTabActive .right{
+      gap:clamp(4px, .6vw, 7px);
+      padding-top:0;
+      align-items:center;
+    }
+    body.displayTabActive .right > :is(.chip, .tabs, .btn, .iconBtn, .headerSelectWrap, .headerToggleWrap){
+      min-height:var(--displayHeaderControlHeight);
+    }
     .right.activeSortBeforeToggle > #displaySortWrap{
       order:-2;
     }
@@ -365,7 +393,7 @@
     .headerToggleLabel{
       font-size:10px;
       font-weight:700;
-      letter-spacing:.04em;
+      letter-spacing:0;
       text-transform:uppercase;
       white-space:nowrap;
       color:var(--muted);
@@ -449,7 +477,7 @@
       width:100%;
       max-width:none;
       justify-self:stretch;
-      min-height:156px;
+      min-height:var(--activeFitCardMinHeight, 176px);
       padding-bottom:56px;
     }
     #displayGrid.boxView.activeDisplayFit .room.hasDoctorBadge{
@@ -472,15 +500,15 @@
     }
     #displayGrid.boxView.activeDisplayFit .roomTop{
       min-height:34px;
-      padding:3px 8px;
+      padding:clamp(4px, 1vh, 8px) 10px;
     }
     #displayGrid.boxView.activeDisplayFit .roomBody{
-      padding:10px 12px;
-      gap:4px;
+      padding:clamp(10px, 1.6vh, 16px) clamp(12px, 1.4vw, 18px);
+      gap:clamp(5px, .8vh, 10px);
     }
     #displayGrid.boxView.activeDisplayFit .room .timerBox{
-      bottom:10px;
-      padding:7px 10px;
+      bottom:clamp(10px, 1.4vh, 16px);
+      padding:clamp(7px, 1.1vh, 12px) clamp(10px, 1vw, 14px);
     }
     html.boardFullscreen .grid{
       grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
@@ -604,6 +632,7 @@
     body.displayTabActive #displayWrap.unlimited{
       height: var(--fullscreenDisplayHeight, calc(100vh - 120px));
       max-height: var(--fullscreenDisplayHeight, calc(100vh - 120px));
+      width:100%;
     }
     html.boardFullscreen #displayWrap,
     html.boardFullscreen #displayWrap.unlimited{
@@ -1300,12 +1329,22 @@
       box-shadow: 0 6px 18px rgba(0,0,0,.25);
       box-shadow: 0 6px 18px rgba(0,0,0,.25);
     }
+    body.displayTabActive .headerIconBtn{
+      min-width:var(--displayHeaderControlHeight);
+      min-height:var(--displayHeaderControlHeight);
+      padding:clamp(5px, .9vh, 8px);
+      font-size:clamp(15px, 2.2vh, 18px);
+    }
     .addHeaderBtn{
       min-width:46px;
       font-size:24px;
       font-weight:800;
       line-height:1;
       padding:0;
+    }
+    body.displayTabActive .addHeaderBtn{
+      min-width:var(--displayHeaderControlHeight);
+      font-size:clamp(19px, 3vh, 24px);
     }
     .mobileQuickViewHeaderBtn{
       display:none;

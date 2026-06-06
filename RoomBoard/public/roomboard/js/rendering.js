@@ -564,6 +564,7 @@
       grid.style.removeProperty("--activeFitCols");
       grid.style.removeProperty("--activeFitGap");
       grid.style.removeProperty("--activeFitSingleWidth");
+      grid.style.removeProperty("--activeFitCardMinHeight");
       grid.style.removeProperty("transform");
       grid.style.removeProperty("width");
     }
@@ -580,32 +581,44 @@
       return rows;
     }
 
-    function chooseActiveDisplayFitColumns(groups, roomCount, width, height){
+    function chooseActiveDisplayFitColumns(groups, roomCount, width, height, dividerCount){
       var configuredCols = Math.max(1, Math.min(8, Number(state && state.settings ? (state.settings.displayCols || 3) : 3)));
-      var maxByWidth = Math.max(1, Math.floor((Math.max(0, width) + 14) / 280));
+      var minReadableColumnWidth = width < 760 ? 188 : (width < 1080 ? 220 : 250);
+      var maxByWidth = Math.max(1, Math.floor((Math.max(0, width) + 14) / minReadableColumnWidth));
       var maxCols = Math.max(1, Math.min(8, maxByWidth));
       var targetCols = Math.max(1, Math.min(configuredCols, maxCols));
       var bestCols = targetCols;
       var bestScale = 0;
-      var preferredCardHeight = 170;
-      var dividerHeight = 32;
+      var bestRows = Infinity;
+      var preferredCardHeight = roomCount <= 2 ? 260 : (roomCount <= 4 ? 230 : (roomCount <= 8 ? 200 : 178));
+      var dividerHeight = dividerCount ? 32 : 0;
       var gap = 14;
 
       for(var cols=1; cols<=maxCols; cols++){
         var roomRows = estimateActiveDisplayRows(groups, cols);
-        var gridRows = roomRows + groups.length;
-        var estimatedHeight = (roomRows * preferredCardHeight) + (groups.length * dividerHeight) + (Math.max(0, gridRows - 1) * gap);
+        var gridRows = roomRows + dividerCount;
+        var estimatedHeight = (roomRows * preferredCardHeight) + (dividerCount * dividerHeight) + (Math.max(0, gridRows - 1) * gap);
         var scale = estimatedHeight > 0 ? Math.min(1, height / estimatedHeight) : 1;
         if(scale >= 1 && cols >= targetCols){
           return cols;
         }
-        if(scale > bestScale || (Math.abs(scale - bestScale) < 0.01 && cols > bestCols)){
+        if(
+          scale > bestScale + 0.01
+          || (Math.abs(scale - bestScale) <= 0.01 && (roomRows < bestRows || (roomRows === bestRows && cols < bestCols)))
+        ){
           bestScale = scale;
           bestCols = cols;
+          bestRows = roomRows;
         }
       }
 
       return bestCols;
+    }
+
+    function clampActiveDisplayFitNumber(value, min, max){
+      value = Number(value);
+      if(!isFinite(value)) value = min;
+      return Math.max(min, Math.min(max, value));
     }
 
     function applyActiveDisplayFit(){
@@ -614,19 +627,27 @@
       var wrap = $("displayWrap");
       if(!grid || !wrap) return;
       var renderMode = getDisplayRenderMode();
-      if(renderMode !== "grid" || !shouldRenderActiveDisplayDoctorGroups(renderMode)){
+      if(renderMode !== "grid"){
+        clearActiveDisplayFit();
+        return;
+      }
+      if(window.matchMedia && window.matchMedia("(max-width: 820px)").matches){
         clearActiveDisplayFit();
         return;
       }
 
       var rooms = getDisplayRooms();
-      var groups = (typeof getActiveDisplayDoctorGroups === "function") ? getActiveDisplayDoctorGroups(rooms) : [];
+      var groupByDoctor = shouldRenderActiveDisplayDoctorGroups(renderMode);
+      var groups = groupByDoctor && typeof getActiveDisplayDoctorGroups === "function"
+        ? getActiveDisplayDoctorGroups(rooms)
+        : [{ doctor: "", rooms: rooms }];
       if(!rooms.length || !groups.length){
         clearActiveDisplayFit();
         return;
       }
 
       var singleActiveRoom = rooms.length === 1;
+      var dividerCount = groupByDoctor ? groups.length : 0;
       grid.classList.add("activeDisplayFit");
       grid.classList.toggle("activeDisplayFitSingle", singleActiveRoom);
       wrap.classList.add("activeDisplayFitWrap");
@@ -636,22 +657,31 @@
 
       var availableWidth = Math.max(1, wrap.clientWidth || grid.clientWidth || 1);
       var availableHeight = Math.max(1, wrap.clientHeight || grid.clientHeight || 1);
-      var cols = chooseActiveDisplayFitColumns(groups, rooms.length, availableWidth, availableHeight);
-      var activeGap = availableHeight < 520 ? 10 : 14;
+      var cols = chooseActiveDisplayFitColumns(groups, rooms.length, availableWidth, availableHeight, dividerCount);
+      var activeGap = availableHeight < 520 ? 9 : (availableHeight > 920 ? 16 : 14);
       var configuredCols = Math.max(1, Math.min(8, Number(state && state.settings ? (state.settings.displayCols || cols || 3) : (cols || 3))));
       var singleBasisCols = Math.max(1, Math.min(configuredCols, Math.max(1, Math.floor((availableWidth + activeGap) / 280))));
       var normalColumnWidth = (availableWidth - (singleBasisCols - 1) * activeGap) / singleBasisCols;
       var singleCardWidth = Math.max(280, Math.min(560, normalColumnWidth));
+      var roomRows = Math.max(1, estimateActiveDisplayRows(groups, cols));
+      var gridRows = roomRows + dividerCount;
+      var dividerHeight = dividerCount ? 32 : 0;
+      var usableCardHeight = (availableHeight - (dividerCount * dividerHeight) - (Math.max(0, gridRows - 1) * activeGap)) / roomRows;
+      var maxCardHeight = singleActiveRoom ? 520 : (rooms.length <= 4 ? 380 : (rooms.length <= 8 ? 300 : 235));
+      var minCardHeight = rooms.length <= 4 ? 190 : (rooms.length <= 8 ? 174 : 162);
+      var cardMinHeight = clampActiveDisplayFitNumber(usableCardHeight, minCardHeight, maxCardHeight);
       grid.style.setProperty("--activeFitCols", String(cols));
       grid.style.setProperty("--activeFitGap", activeGap + "px");
       grid.style.setProperty("--activeFitSingleWidth", singleCardWidth.toFixed(4) + "px");
+      grid.style.setProperty("--activeFitCardMinHeight", cardMinHeight.toFixed(4) + "px");
 
       var contentHeight = Math.max(1, grid.scrollHeight || grid.getBoundingClientRect().height || 1);
       var rawScale = (availableHeight - 2) / contentHeight;
-      var maxScale = singleActiveRoom ? 1.35 : 1.18;
-      var minimumReadableScale = rooms.length <= 4 ? 0.78 : (rooms.length <= 8 ? 0.66 : 0.56);
+      var maxScale = singleActiveRoom ? 1.65 : (rooms.length <= 4 ? 1.36 : (rooms.length <= 8 ? 1.18 : 1.08));
+      var minimumReadableScale = rooms.length <= 4 ? 0.9 : (rooms.length <= 8 ? 0.78 : 0.68);
       var scale = Math.min(maxScale, rawScale);
       var needsScroll = false;
+      if(scale > 0.96 && scale < 1.04) scale = 1;
       if(scale < minimumReadableScale){
         scale = minimumReadableScale;
         needsScroll = true;
@@ -762,6 +792,7 @@
       }
       bumpRenderPerf("displayRoomPatches", roomIds.length);
       if(isList) requestAnimationFrame(applyWbRoomNameMarquee);
+      else scheduleActiveDisplayFit();
       syncRoomNotesLayers();
       return true;
     }
@@ -834,11 +865,15 @@
         grid.appendChild(node);
         rememberSurfaceRoomNode("display", displayRooms[j].id, node);
       }
+      scheduleActiveDisplayFit();
       syncRoomNotesLayers();
       if(!skipTimerBindingRefresh) rebuildTimerBindings();
     }
 
     window.addEventListener("resize", scheduleActiveDisplayFit);
+    if(window.visualViewport && window.visualViewport.addEventListener){
+      window.visualViewport.addEventListener("resize", scheduleActiveDisplayFit);
+    }
     window.addEventListener("focus", scheduleActiveDisplayFit);
     window.addEventListener("pageshow", scheduleActiveDisplayFit);
     document.addEventListener("visibilitychange", function(){

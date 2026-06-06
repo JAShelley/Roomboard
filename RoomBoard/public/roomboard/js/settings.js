@@ -557,7 +557,9 @@
       var mainStyles = main ? window.getComputedStyle(main) : null;
       var padTop = mainStyles ? (parseFloat(mainStyles.paddingTop) || 0) : 0;
       var padBottom = mainStyles ? (parseFloat(mainStyles.paddingBottom) || 0) : 0;
-      var viewportHeight = window.innerHeight || root.clientHeight || 0;
+      var viewportHeight = (window.visualViewport && window.visualViewport.height)
+        ? window.visualViewport.height
+        : (window.innerHeight || root.clientHeight || 0);
       var availableHeight = Math.max(240, viewportHeight - headerHeight - padTop - padBottom - 8);
 	      root.style.setProperty("--appHeaderHeight", headerHeight + "px");
 	      root.style.setProperty("--fullscreenDisplayHeight", availableHeight + "px");
@@ -656,6 +658,9 @@
     document.addEventListener("fullscreenchange", function(){ updateFullscreenBtn(); updateViewportFit(); });
     document.addEventListener("webkitfullscreenchange", function(){ updateFullscreenBtn(); updateViewportFit(); });
     window.addEventListener("resize", updateViewportFit);
+    if(window.visualViewport && window.visualViewport.addEventListener){
+      window.visualViewport.addEventListener("resize", updateViewportFit);
+    }
     var lastMobileQuickViewViewport = !!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches);
     window.addEventListener("resize", function(){
       var nextMobileQuickViewViewport = !!(window.matchMedia && window.matchMedia("(max-width: 820px)").matches);
