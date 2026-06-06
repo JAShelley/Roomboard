@@ -461,6 +461,7 @@
     #displayGrid.boxView.activeDisplayFit{
       grid-template-columns: repeat(var(--activeFitCols, var(--cols)), minmax(260px, 1fr));
       gap:var(--activeFitGap, 14px);
+      align-items:start;
       transform-origin:top left;
       will-change:transform;
     }
@@ -480,8 +481,15 @@
       min-height:var(--activeFitCardMinHeight, 176px);
       padding-bottom:56px;
     }
+    #displayGrid.boxView.activeDisplayFit .room.isEmptyDisplayCard{
+      min-height:var(--activeFitEmptyCardMinHeight, 136px);
+      padding-bottom:48px;
+    }
     #displayGrid.boxView.activeDisplayFit .room.hasDoctorBadge{
       padding-bottom:56px;
+    }
+    #displayGrid.boxView.activeDisplayFit .room.isEmptyDisplayCard.hasDoctorBadge{
+      padding-bottom:48px;
     }
     #displayGrid.boxView.activeDisplayFit .room.hasDoctorBadge .roomBody{
       padding-right:max(76px, calc(14px + (68px * var(--doctorInitBadgeScale, 1))));
@@ -509,6 +517,14 @@
     #displayGrid.boxView.activeDisplayFit .room .timerBox{
       bottom:clamp(10px, 1.4vh, 16px);
       padding:clamp(7px, 1.1vh, 12px) clamp(10px, 1vw, 14px);
+    }
+    #displayGrid.boxView.activeDisplayFit .room.isEmptyDisplayCard .roomBody{
+      padding:8px 12px;
+      gap:4px;
+    }
+    #displayGrid.boxView.activeDisplayFit .room.isEmptyDisplayCard .timerBox{
+      bottom:10px;
+      padding:7px 10px;
     }
     html.boardFullscreen .grid{
       grid-template-columns: repeat(var(--cols), minmax(0, 1fr));

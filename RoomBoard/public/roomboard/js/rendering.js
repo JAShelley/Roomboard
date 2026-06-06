@@ -506,7 +506,7 @@
       var isEmpty = !room.patientName && !room.needsCleaning;
       var hasNotesDock = !!notesDock;
       var displayDoctorInitials = showDoctorBadge ? getDoctorInitials(room.doctor) : "";
-      var cls = "room" + (room.needsCleaning ? " cleaning" : "") + (hasRedoDischarge(room) ? " hasRedo" : "") + (hasNotesDock ? " hasNotesDock" : "") + (displayDoctorInitials ? " hasDoctorBadge" : "") + (hasTimerAlert2(room) ? " timerAlertBorder" : "") + (roomMatchesSelectedDoctor(room) ? " doctorSelected" : "");
+      var cls = "room" + (isEmpty ? " isEmptyDisplayCard" : "") + (room.needsCleaning ? " cleaning" : "") + (hasRedoDischarge(room) ? " hasRedo" : "") + (hasNotesDock ? " hasNotesDock" : "") + (displayDoctorInitials ? " hasDoctorBadge" : "") + (hasTimerAlert2(room) ? " timerAlertBorder" : "") + (roomMatchesSelectedDoctor(room) ? " doctorSelected" : "");
       var summary = "";
       if(room.needsCleaning){
         summary = '<div class="summary"><span class="pill" style="border-color: rgba(251,191,36,.55); background: rgba(251,191,36,.12);"><strong>NEEDS TO BE CLEANED</strong></span></div>';
@@ -565,6 +565,7 @@
       grid.style.removeProperty("--activeFitGap");
       grid.style.removeProperty("--activeFitSingleWidth");
       grid.style.removeProperty("--activeFitCardMinHeight");
+      grid.style.removeProperty("--activeFitEmptyCardMinHeight");
       grid.style.removeProperty("transform");
       grid.style.removeProperty("width");
     }
@@ -647,6 +648,7 @@
       }
 
       var singleActiveRoom = rooms.length === 1;
+      var emptyRoomCount = rooms.filter(function(room){ return !room.patientName && !room.needsCleaning; }).length;
       var dividerCount = groupByDoctor ? groups.length : 0;
       grid.classList.add("activeDisplayFit");
       grid.classList.toggle("activeDisplayFitSingle", singleActiveRoom);
@@ -670,14 +672,17 @@
       var maxCardHeight = singleActiveRoom ? 520 : (rooms.length <= 4 ? 380 : (rooms.length <= 8 ? 300 : 235));
       var minCardHeight = rooms.length <= 4 ? 190 : (rooms.length <= 8 ? 174 : 162);
       var cardMinHeight = clampActiveDisplayFitNumber(usableCardHeight, minCardHeight, maxCardHeight);
+      var emptyCardMinHeight = clampActiveDisplayFitNumber(cardMinHeight * 0.66, 126, 152);
       grid.style.setProperty("--activeFitCols", String(cols));
       grid.style.setProperty("--activeFitGap", activeGap + "px");
       grid.style.setProperty("--activeFitSingleWidth", singleCardWidth.toFixed(4) + "px");
       grid.style.setProperty("--activeFitCardMinHeight", cardMinHeight.toFixed(4) + "px");
+      grid.style.setProperty("--activeFitEmptyCardMinHeight", emptyCardMinHeight.toFixed(4) + "px");
 
       var contentHeight = Math.max(1, grid.scrollHeight || grid.getBoundingClientRect().height || 1);
       var rawScale = (availableHeight - 2) / contentHeight;
       var maxScale = singleActiveRoom ? 1.65 : (rooms.length <= 4 ? 1.36 : (rooms.length <= 8 ? 1.18 : 1.08));
+      if(emptyRoomCount) maxScale = Math.min(maxScale, 1);
       var minimumReadableScale = rooms.length <= 4 ? 0.9 : (rooms.length <= 8 ? 0.78 : 0.68);
       var scale = Math.min(maxScale, rawScale);
       var needsScroll = false;
