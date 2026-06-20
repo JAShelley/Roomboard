@@ -27,6 +27,9 @@
     "capture:dev": "electron desktop/capture-main.cjs",
     "capture:helper:build": "dotnet publish desktop/capture-helper/RoomBoard.Capture.Helper.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true",
     "capture:helper:build:mac": "swift build -c release --package-path desktop/capture-helper-mac",
+    "stats:dev": "electron desktop/stats-main.cjs",
+    "stats:pack:mac": "electron-builder --config electron-builder.stats.mac.json --mac dir",
+    "stats:dist:mac": "electron-builder --config electron-builder.stats.mac.json --mac",
     "precapture:pack": "npm run desktop:assets && npm run capture:helper:build",
     "capture:pack": "electron-builder --config electron-builder.capture.json --dir",
     "precapture:dist:win": "npm run desktop:assets && npm run capture:helper:build",
@@ -38,7 +41,8 @@
     "@supabase/supabase-js": "^2.49.4",
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "stripe": "^17.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
