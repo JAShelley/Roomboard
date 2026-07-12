@@ -778,6 +778,10 @@
     }
 
     async function requireAuthenticatedSession(context){
+      // The public interactive demo deliberately has no Supabase client or
+      // clinic session. Demo edits stay in memory, so they should quietly
+      // skip auth-only sync and statistics work rather than report an error.
+      if(window.__roomboardInteractiveDemo) return false;
       if(!supabase){
         setStatus("Supabase not ready.");
         setSyncUI("err", "Init needed");

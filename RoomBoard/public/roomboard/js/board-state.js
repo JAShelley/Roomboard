@@ -282,6 +282,7 @@
     }
 
     function getBootPersistenceScope(){
+      if(window.__roomboardInteractiveDemo) return "demo";
       if(currentPracticeId) return currentPracticeId;
       if(window.__roomboardBootPracticeScope) return window.__roomboardBootPracticeScope;
       if(!hasStoredAuthSessionSnapshot()) return "guest";
@@ -1210,6 +1211,7 @@
     }
 
     function loadLocal(scope){
+      if(window.__roomboardInteractiveDemo) return null;
       try{
         var raw = localStorage.getItem(getStateStorageKey(scope || getBootPersistenceScope()));
         if(!raw) return null;
@@ -1265,6 +1267,7 @@
 	      }
 	    }
 	    function saveLocal(){
+	      if(window.__roomboardInteractiveDemo) return;
 	      try{
 	        var storageKey = getStateStorageKey(getPracticeScope());
 	        var serialized = JSON.stringify(serializeStateForPersistence());

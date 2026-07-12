@@ -39,6 +39,7 @@
 	<option value="time">Time</option>
 	</select>
 	</div>
+	<a class="btn sm demoLaunchLink" href="/demo">Try demo</a>
 	<button aria-label="Add or edit a room from Display" class="iconBtn headerIconBtn addHeaderBtn" id="openQuickAddBtn" title="Add or edit a room from Display" type="button">+</button>
 	<button aria-label="Toggle mobile quick view" class="iconBtn headerIconBtn mobileQuickViewHeaderBtn" id="toggleMobileQuickViewBtn" title="Toggle mobile quick view" type="button"><span aria-hidden="true" class="headerPhoneIcon"></span></button>
 	<button aria-label="Enter full screen" class="iconBtn headerIconBtn" id="fullscreenBtn" title="Enter full screen" type="button">⤢</button>
@@ -47,6 +48,19 @@
 	</div>
 </div>
 </header>
+<section class="demoModeBanner" id="demoModeBanner" aria-label="Interactive demo" hidden>
+  <div class="demoModeCopy">
+    <span class="demoModeEyebrow"><span aria-hidden="true"></span>Interactive demo</span>
+    <div>
+      <strong>Explore a live sample board.</strong>
+      <p>Double-click a room to edit it (double-tap on phone), use <b>+</b> to add a patient, or switch views. Changes stay in this browser and never reach a clinic.</p>
+    </div>
+  </div>
+  <div class="demoModeActions">
+    <button class="btn sm" id="resetDemoBtn" type="button">Reset demo</button>
+    <a class="btn sm primary" href="/roomboard/index.html?mode=startup&amp;auth=signup">Start free trial</a>
+  </div>
+</section>
 <main>
 <section id="displayView">
 <div class="gridWrap unlimited" id="displayWrap">
@@ -796,6 +810,7 @@ Make sure you unzipped the file, selected the folder instead of the zip, and rel
 <script src="./js/ux.js?v=20260528a"></script>
 <script src="./js/theme.js?v=20260517d"></script>
 <script src="./js/desktop-capture-panel.js?v=20260529a"></script>
+<script src="./js/demo-mode.js?v=20260712a"></script>
 <script src="./js/init.js?v=20260517c"></script>
 </body>
 </html>

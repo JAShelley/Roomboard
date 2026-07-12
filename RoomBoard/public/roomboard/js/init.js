@@ -17,9 +17,15 @@
   function boot(recoveryAttempted){
     var bootScope = "guest";
     try{
-      bootScope = (typeof getBootPersistenceScope === "function") ? getBootPersistenceScope() : "guest";
-      var restoringClinicSnapshot = !!(bootScope && bootScope !== "guest");
-      state = ensureStateShape(loadLocal(bootScope) || null);
+      var isInteractiveDemo = !!window.__roomboardInteractiveDemo;
+      bootScope = isInteractiveDemo
+        ? "demo"
+        : ((typeof getBootPersistenceScope === "function") ? getBootPersistenceScope() : "guest");
+      var restoringClinicSnapshot = !isInteractiveDemo && !!(bootScope && bootScope !== "guest");
+      var initialState = isInteractiveDemo && typeof window.createRoomBoardDemoState === "function"
+        ? window.createRoomBoardDemoState()
+        : loadLocal(bootScope);
+      state = ensureStateShape(initialState || null);
       normalizeSettingsForSave(state);
       applyAccountSettingsToState(state);
       applySessionUiPrefs(state);
@@ -29,9 +35,12 @@
       initSettingsTabs();
       refreshUiFromState({ applyTheme: true, renderSettingsLists: true });
       refreshKnownRoomIds(state.rooms);
-      setStatus(restoringClinicSnapshot ? "Restoring clinic snapshot..." : "Ready");
-      setSyncUI(restoringClinicSnapshot ? "syncing" : "idle", restoringClinicSnapshot ? "Restoring clinic" : "Guest");
+      setStatus(isInteractiveDemo
+        ? "Explore the sample board — nothing is saved."
+        : (restoringClinicSnapshot ? "Restoring clinic snapshot..." : "Ready"));
+      setSyncUI(isInteractiveDemo ? "idle" : (restoringClinicSnapshot ? "syncing" : "idle"), isInteractiveDemo ? "Demo" : (restoringClinicSnapshot ? "Restoring clinic" : "Guest"));
       startAutoPull();
+      if(isInteractiveDemo) return;
       initSupabase();
     }catch(err){
       if(!recoveryAttempted){
